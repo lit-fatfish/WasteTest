@@ -14,39 +14,63 @@ import time
 from datetime import date
 import redis
 
-
-def write_queue(r, queue_name, list):
-    if len(list) == 7:
-        if r.rpush(queue_name, list[0], list[1], list[2], list[3], list[4], list[5], list[6]):
-            return True
-        else:
-            time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-            redis_str = str(time_now) + "\twrite_queue fail\t" + str(list) + "\n"
-            record_message("redis.log", redis_str)
-            return False
-    else:
-        return False
+def write_queue(r,queue_name, callback_obj):
+    callback_obj = json.dumps(callback_obj)
+    callback_mapping = {
+        callback_obj: time.time()
+    }
+    r.zadd(queue_name, callback_mapping)
 
 
-def read_queue(r, queue_name):
-    list = r.lrange(queue_name, 0, 6)
-    if len(list) == 7:
-        return list
-    else:
-        # 读不到，应该是列表为空，不用记录日志
-        # time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        # redis_str = str(time_now) + "\tread_queue fail\t" + "\n"
-        # record_message("redis.log", redis_str)
-         return False
 
-def remove_queue(r, queue_name):
-    if r.ltrim("queue_name", 7, -1):
-        return True
-    else:
-        time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        redis_str = str(time_now) + "\tremove_queue fail\t" + "\n"
-        record_message("redis.log", redis_str)
-        return False
+# 返回整个数据的字典
+
+
+def read_queue(r,queue_name):
+    range_list = r.zrange(queue_name, 0, 1)
+    if range_list:
+        set_del_task = range_list[0]
+        set_del_task = json.loads(set_del_task)
+        return set_del_task
+
+
+def remove_queue(r,queue_name, callback_obj):
+    callback_obj = json.dumps(callback_obj)
+    r.zrem(queue_name,callback_obj)
+
+
+# def write_queue(r, queue_name, list):
+#     if len(list) == 7:
+#         if r.rpush(queue_name, list[0], list[1], list[2], list[3], list[4], list[5], list[6]):
+#             return True
+#         else:
+#             time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+#             redis_str = str(time_now) + "\twrite_queue fail\t" + str(list) + "\n"
+#             record_message("redis.log", redis_str)
+#             return False
+#     else:
+#         return False
+#
+#
+# def read_queue(r, queue_name):
+#     list = r.lrange(queue_name, 0, 6)
+#     if len(list) == 7:
+#         return list
+#     else:
+#         # 读不到，应该是列表为空，不用记录日志
+#         # time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+#         # redis_str = str(time_now) + "\tread_queue fail\t" + "\n"
+#         # record_message("redis.log", redis_str)
+#          return False
+#
+# def remove_queue(r, queue_name):
+#     if r.ltrim("queue_name", 7, -1):
+#         return True
+#     else:
+#         time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+#         redis_str = str(time_now) + "\tremove_queue fail\t" + "\n"
+#         record_message("redis.log", redis_str)
+#         return False
 
 
 # 获取源视频，并保存在本地，最后Post到服务器上， num为输入的视频源
@@ -80,16 +104,25 @@ def cut_video(r, list_num, rtmp_list, cut_time):
         json_data = read_jsonfile('config.json')
 
         # redis 返回的就是列表，暂时就先按这样的顺序，在使用的时候，也按这样的顺序存储
-        list_temp = []
-        list_temp.append(filename)
-        list_temp.append("0")  # 失败次数
-        list_temp.append(json_data['url'])
-        list_temp.append(videoid)
-        list_temp.append(json_data['cameracode'])
-        list_temp.append(json_data['resultAddress'])
-        list_temp.append(str(time_now))
+        # list_temp = []
+        # list_temp.append(filename)
+        # list_temp.append("0")  # 失败次数
+        # list_temp.append(json_data['url'])
+        # list_temp.append(videoid)
+        # list_temp.append(json_data['cameracode'])
+        # list_temp.append(json_data['resultAddress'])
+        # list_temp.append(str(time_now))
+        dic = {
+            "filename": filename,
+            "fail_num": 0,
+            "url": json_data['url'],
+            "data_id": videoid,
+            "cameracode": json_data['cameracode'],
+            "resultAddress": json_data['resultAddress'],
+            "time_start": str(time_now)
+        }
 
-        write_queue(r, "wait_queue", list_temp)
+        write_queue(r, "wait_queue", dic)
 
     else:
         # 切片不成功
@@ -103,16 +136,16 @@ def post_to_server(r):
     # 将保存好的视频post到服务器
     # 从Redis读取文件
     time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    list_temp = read_queue(r, "wait_queue")
-    if list_temp:
-        filename = list_temp[0]
-        fail_num = list_temp[1]
-        url = list_temp[2]
+    dic = read_queue(r, "wait_queue")
+    if dic:
+        filename = dic["filename"]
+        fail_num = dic["fail_num"]
+        url = dic["url"]
         formdata = {
-            "videoid": list_temp[3],
-            "cameracode": list_temp[4],
-            "resultAddress": list_temp[5],
-            "time_start": list_temp[6]  # 需要校准
+            "videoid": dic["data_id"],
+            "cameracode": dic["cameracode"],
+            "resultAddress": dic["resultAddress"],
+            "time_start": dic["time_start"]  # 需要校准
         }
         files = {'fileData': open(filename, 'rb')}
     else:
@@ -120,13 +153,14 @@ def post_to_server(r):
     response = requests.post(url, data=formdata, files=files)
     # 移除当前等待队列
     # print(remove_queue(r, "wait_queue"))
-    r.lpop("wait_queue")
-    r.lpop("wait_queue")
-    r.lpop("wait_queue")
-    r.lpop("wait_queue")
-    r.lpop("wait_queue")
-    r.lpop("wait_queue")
-    r.lpop("wait_queue")
+    # r.lpop("wait_queue")
+    # r.lpop("wait_queue")
+    # r.lpop("wait_queue")
+    # r.lpop("wait_queue")
+    # r.lpop("wait_queue")
+    # r.lpop("wait_queue")
+    # r.lpop("wait_queue")
+    remove_queue(r,"wait_queue",dic)
 
     if response.status_code == 200:
         json_result = response.json()
@@ -137,7 +171,7 @@ def post_to_server(r):
             post_result_str += "\tpost成功\n"
             record_message('post_result.log', post_result_str)
             # 加入成功队列
-            write_queue(r,"finish_queue",list_temp)
+            write_queue(r,"finish_queue",dic)
 
             return True
         # 错误码... 未添加错误代码处理
@@ -164,14 +198,14 @@ def post_to_server(r):
             post_result_str += "\t视频缺少帧数" + "\tpost失败"
         record_message('post_result.log', post_result_str)
 
-        if fail_num >= "4":
+        if fail_num >= 4:
             # 加入失败队列
-            list_temp[1] += 1
-            write_queue(r,"fail_queue",list_temp)
+            dic["fail_num"] += 1
+            write_queue(r,"fail_queue",dic)
 
         else:
-            list_temp[1] += 1
-            write_queue(r,"wait_queue",list_temp)
+            dic["fail_num"] += 1
+            write_queue(r,"wait_queue",dic)
             # 失败次数+1 并重新写到等待队列
     else:
         # 服务器返回的状态码不对，比如404之类的

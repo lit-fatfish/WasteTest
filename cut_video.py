@@ -10,6 +10,7 @@ import time
 from datetime import date
 import redis
 from redis import Redis
+from threading import Timer
 
 # 根据键值读字符串
 def get_values(r, key):
@@ -20,8 +21,9 @@ def set_values(r, key, dic):
     r.set(key, str(dic))
 
 
+# 成功返回int 1
 def remove_key(r, key):
-    r.delete(key)
+    return r.delete(key)
 
 
 # callback_obj字典对象
@@ -55,30 +57,72 @@ def get_days_list(num):
     return list_days
 
 
-# print(get_days_list(7))
 
-def clear_file(path, num):
+# 定时清除文件
+# timing = 定时时长s
+# r = redis
+# path 基于程序位置的文件夹
+# num 保留天数
+# 其中当video目录删除文件时，会根据文件名去删除Redis缓存队列中的数据
+
+
+def clear_file(timing,r, path, num):
+    if not os.path.exists(path):
+        t = Timer(timing, clear_file, (timing, path, num,))
+        t.start()
+        return
+    time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     list_days = get_days_list(num)
-    print(list_days)
     list = os.listdir(path)
+    list_rm = []
     for filename in list:
         if filename not in list_days:
             # 文件名不在列表中
-            print(filename)
+            list_rm.append(filename)
             filename = os.path.join(path,filename)
             if os.path.isdir(filename):
-                # 删除文件夹
+
+                # 判断清理文件是否是视频文件
+                if path == 'video':
+                    list_video = os.listdir(filename)
+                    for video_name in list_video:
+                        video_name = video_name[0:-4] # 去掉.mp4 ，得到视频名
+                        # 删除key-values
+                        # 删除成功才说明存在Redis中
+                        if remove_key(r,video_name):
+                            # 删除队列
+                            if remove_queue(r,"finish_queue",video_name):
+                                pass
+                            elif remove_queue(r,"wait_queue",video_name):
+                                pass
+                            elif remove_queue(r,"fail_queue",video_name):
+                                pass
+                                # 删除文件夹
                 shutil.rmtree(filename)
             elif os.path.isfile(filename):
                 # 删除文件
                 os.remove(filename)
+    str_clear = str(time_now) + "\t\t路径："+path + "\t\t文件名=" + str(list_rm)+ "\n"
+    record_message("clear.log",str_clear)
+    t = Timer(timing, clear_file, (timing, r,path, num,))
+    t.start()
 
 
-# 获取源视频，并保存在本地，并记录到Redis
-# list_num 列表的下标
-# rtmp_list 视频地址表
-# cut_time 切片时间
+# 定时上传失败队列中的文件
 
+
+def post_fail_file(timing,r):
+    # 读取全部的失败队列
+    # 假如不存在，则返回
+    # 读取到的是一个文件名，根据文件名去读取数据
+    # 根据读取到的数据进行post
+    list_filename = r.zrange("fail_queue", 0, -1) # 获取全部的队列，根据这个队列进行循环上传
+    if list_filename:
+        for filename in list_filename:
+            post_to_server(r,"fail_queue") #从失败队列中取出数据post到服务器
+            time.sleep(1)
+    t = Timer(timing, post_fail_file,(timing,r,))
+    t.start()
 
 # 写入信息到文件
 
@@ -92,6 +136,11 @@ def record_message(filename, message_str):
     filename = os.path.join(path,filename)
     with open(filename, 'a+', encoding='utf8') as fp:
         fp.write(message_str)
+
+# 获取源视频，并保存在本地，并记录到Redis
+# list_num 列表的下标
+# rtmp_list 视频地址表
+# cut_time 切片时间
 
 
 def cut_video(r, list_num, rtmp_list, cut_time):
@@ -173,10 +222,10 @@ def cut_video(r, list_num, rtmp_list, cut_time):
 # 数据从Redis中读取
 
 
-def post_to_server(r):
+def post_to_server(r,queue_name):
     time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     # 从Redis读取文件
-    video_id = read_queue(r, "wait_queue")
+    video_id = read_queue(r, queue_name)
     if video_id:
         dic = get_values(r,video_id)
     else:
@@ -198,7 +247,7 @@ def post_to_server(r):
     # 获取视频名
     # 移除当前等待队列
     # 删除对应的键
-    remove_queue(r,"wait_queue",video_id)
+    remove_queue(r,queue_name,video_id)
     remove_key(r,video_id)
 
     if response.status_code == 200:
@@ -254,8 +303,8 @@ def post_to_server(r):
 
 # 上传到服务器线程
 
-def post_thered(r):
-    t = threading.Thread(target=post_to_server, args=(r,))
+def post_thered(r, queue_name):
+    t = threading.Thread(target=post_to_server, args=(r,queue_name,))
     t.start()
 
 
@@ -304,14 +353,18 @@ def read_jsonfile(filename):
 def init_redis():
     pwd = "anlly12345"
     host= '192.168.31.184'
-    host= 'localhost'
-    pwd=''
+    # host= 'localhost'
+    # pwd=''
     redis_obj = Redis(host=host, port=6379, password=pwd, db=8,decode_responses=True)
     return redis_obj
 
 
+
 def main():
     r = init_redis()
+    clear_file(28800,r,'log',7) # 3600*8 = 28800 8个小时
+    clear_file(28800,r,'video',7)
+    post_fail_file(7200, r) # 每两小时运行一次
     while True:
         json_data = read_jsonfile('config.json')
         if json_data['flag'] == '1':
@@ -344,7 +397,7 @@ def main():
 
                 count = count + 1
                 # post到服务器
-                post_thered(r)
+                post_thered(r, "wait_queue")
                 time.sleep(1)
         else:
             time.sleep(1)

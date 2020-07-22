@@ -158,6 +158,30 @@ def cut_video(r, list_num, rtmp_list, cut_time):
 
     # 判断视频是否存在，存在则上传
     if os.path.exists(filename):
+        # 判断文件大小，0k的文件删除并且不写入到Redis
+        if not os.path.getsize(filename):
+            os.remove(filename)
+            # 需要提前离开这个程序
+            time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            log_str = "开始时间:" + str(time_start) + "\t\t结束时间:" + str(time_now) + "\t切片地址=" + rtmp_list[
+                list_num] + "\t视频长度为0，切片失败\n"
+            record_message("cut_result.log", log_str)
+            rtmp_url = read_queue(r, "status_queue")
+            if rtmp_url:
+                dic_status = get_values(r, rtmp_url)
+                # 假如读取不到状态列表的键值对，应该删除这个内容
+                if not dic_status:
+                    remove_queue(r, 'status_queue')
+            else:
+                return
+            dic_status["fail_num"] += 1
+            if dic_status["fail_num"] >= 5:
+                dic_status['status'] = 'fail'
+
+            write_queue(r, "status_queue", rtmp_list[list_num])  # 写入rtmp_url为集合的值
+            set_values(r, rtmp_list[list_num], dic_status)
+            return
+
         # 切片成功，记录日志
         time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         log_str = str(time_now) + "\t\t文件名=" + videoid + "\t切片成功\n"

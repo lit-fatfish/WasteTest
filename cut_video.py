@@ -18,7 +18,8 @@ def get_values(r, key):
 
 # dic 字典
 def set_values(r, key, dic):
-    r.set(key, str(dic))
+    json_data = read_jsonfile('config.json')
+    r.set(key, str(dic),ex=int(json_data['expire'])*86400) # 获取到期天数，然后乘以86400s（一天）
 
 
 # 成功返回int 1
@@ -87,17 +88,12 @@ def clear_file(timing,r, path, num):
                     list_video = os.listdir(filename)
                     for video_name in list_video:
                         video_name = video_name[0:-4] # 去掉.mp4 ，得到视频名
-                        # 删除key-values
-                        # 删除成功才说明存在Redis中
-                        if remove_key(r,video_name):
-                            # 删除队列
-                            if remove_queue(r,"finish_queue",video_name):
-                                pass
-                            elif remove_queue(r,"wait_queue",video_name):
-                                pass
-                            elif remove_queue(r,"fail_queue",video_name):
-                                pass
-                                # 删除文件夹
+                        # key-values 等待自动过期，删除成功或失败中的队列即可
+                        if remove_queue(r,"finish_queue",video_name):
+                            pass
+                        elif remove_queue(r,"fail_queue",video_name):
+                            pass
+                # 删除文件夹
                 shutil.rmtree(filename)
             elif os.path.isfile(filename):
                 # 删除文件
@@ -179,10 +175,6 @@ def cut_video(r, list_num, rtmp_list, cut_time):
         write_queue(r,"status_queue",rtmp_list[list_num]) # 写入rtmp_url为集合的值
         set_values(r,rtmp_list[list_num],dic_status)
 
-        # remove_queue(r,"status_queue",dic_status)
-        # dic_status["status"] = "normal"
-        # write_queue(r,"status_queue",dic_status)
-
         # 将数据写入队列
         json_data = read_jsonfile('config.json')
 
@@ -208,6 +200,9 @@ def cut_video(r, list_num, rtmp_list, cut_time):
         rtmp_url = read_queue(r, "status_queue")
         if rtmp_url:
             dic_status = get_values(r, rtmp_url)
+            # 假如读取不到状态列表的键值对，应该删除这个内容
+            if not dic_status:
+                remove_queue(r,'status_queue')
         else:
             return
         dic_status["fail_num"] += 1
@@ -228,7 +223,13 @@ def post_to_server(r,queue_name):
     video_id = read_queue(r, queue_name)
     if video_id:
         dic = get_values(r,video_id)
+        # 假如读取不到结果,删除该队列
+        if not dic:
+            remove_queue(r, queue_name, video_id)
+
+        # print(dic)
     else:
+        # 读得到队列里面的内容，但是读取不到键值对，说明队列出现错误，应该删除当前的队列
         return
     if dic:
         filename = dic["filename"]
@@ -253,7 +254,8 @@ def post_to_server(r,queue_name):
     if response.status_code == 200:
         json_result = response.json()
         # 返回结果判断
-        post_result_str = str(time_now) + "\t\tdataid=" + json_result['dataid'] + "\t\terror_code=" + str(
+        # 这里的data_id 采用从redis中读取文件名，因为有可能返回的json文件无法获得文件名
+        post_result_str = str(time_now) + "\t\tdataid=" + dic["data_id"] + "\t\terror_code=" + str(
             json_result['error_code'])
         if json_result['error_code'] == 0:
             post_result_str += "\tpost成功\n"
@@ -265,28 +267,35 @@ def post_to_server(r,queue_name):
         # 错误码... 未添加错误代码处理
         elif json_result['error_code'] == 10001:
             # 非本机网点id
-            post_result_str += "\t非本机网点id" + "\tpost失败"
+            post_result_str += "\t非本机网点id" + "\tpost失败\n"
         elif json_result['error_code'] == 10002:
             # 视频文件太小
-            post_result_str += "\t视频文件太小" + "\tpost失败"
+            post_result_str += "\t视频文件太小" + "\tpost失败\n"
         elif json_result['error_code'] == 10003:
             # 视频文件太小
-            post_result_str += "\t视频文件太小" + "\tpost失败"
+            post_result_str += "\t视频文件太小" + "\tpost失败\n"
         elif json_result['error_code'] == 10009:
             # 视频文件太小
-            post_result_str += "\t视频文件太小" + "\tpost失败"
+            post_result_str += "\t视频文件太小" + "\tpost失败\n"
         elif json_result['error_code'] == 10011:
             # 视频文件太小
-            post_result_str += "\t视频文件太小" + "\tpost失败"
+            post_result_str += "\t视频文件太小" + "\tpost失败\n"
         elif json_result['error_code'] == 10012:
             # 重复上传（正在推理中）
-            post_result_str += "\t重复上传" + "\tpost失败"
-        elif json_result['error_code'] == 10014:
             # 视频缺少帧数
             post_result_str += "\t视频缺少帧数" + "\tpost失败"
         record_message('post_result.log', post_result_str)
-        # 这里肯定是失败的，次数+！
+        # 这里肯定是失败的，次数+1
         dic["fail_num"] += 1
+
+        # 上传错误代码到Redis
+        dic_post = {
+            "time": time_now,
+            "data_id":dic["data_id"],
+            "error_code":json_result['error_code']
+        }
+        key_post = 'fail' + dic["data_id"]
+        set_values(r, key_post, dic_post)
 
         if fail_num >= 5:
             # 加入失败队列
@@ -362,8 +371,9 @@ def init_redis():
 
 def main():
     r = init_redis()
-    clear_file(28800,r,'log',7) # 3600*8 = 28800 8个小时
-    clear_file(28800,r,'video',7)
+    json_data = read_jsonfile('config.json')
+    clear_file(int(json_data['timing']),r,'log',int(json_data['expire'])) # 3600*8 = 28800 8个小时
+    clear_file(int(json_data['timing']),r,'video',int(json_data['expire']))
     post_fail_file(7200, r) # 每两小时运行一次
     while True:
         json_data = read_jsonfile('config.json')
@@ -381,7 +391,7 @@ def main():
             # print('times', times)
             # print('numbers', numbers)
             for i in range(int(json_data['times']) * 60):
-                time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                # time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
                 # print(time_now)
                 if count % 60 == 0:  # 每分钟执行一次

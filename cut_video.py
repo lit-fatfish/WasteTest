@@ -409,8 +409,8 @@ def init_redis():
     json_data = read_jsonfile('config.json')
 
     host = json_data['redis_host']
-    pwd = json_data['redis_pwd']
-    db = json_data['redis_db']
+    pwd = "anlly12345"
+    db = 0
     # host= 'localhost'
     # pwd=''
     redis_obj = Redis(host=host, port=6379, password=pwd, db=db,decode_responses=True)

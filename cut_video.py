@@ -67,11 +67,16 @@ def get_days_list(num):
 # 其中当video目录删除文件时，会根据文件名去删除Redis缓存队列中的数据
 
 
-def clear_file(timing,r, path, num):
+def clear_file(r, path):
+    json_data = read_jsonfile('config.json')
+    timing = int(json_data["timing"]) * 10
+    num = int(json_data['expire'])
+
     if not os.path.exists(path):
-        t = Timer(timing, clear_file, (timing, path, num,))
+        t = Timer(timing, clear_file, (r, path,))
         t.start()
         return
+
     time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     list_days = get_days_list(num)
     list = os.listdir(path)
@@ -100,7 +105,7 @@ def clear_file(timing,r, path, num):
                 os.remove(filename)
     str_clear = str(time_now) + "\t\t路径："+path + "\t\t文件名=" + str(list_rm)+ "\n"
     record_message("clear.log",str_clear)
-    t = Timer(timing, clear_file, (timing, r,path, num,))
+    t = Timer(timing, clear_file, (r, path,))
     t.start()
 
 
@@ -182,6 +187,7 @@ def cut_video(r, list_num, rtmp_list, cut_time):
             set_values(r, rtmp_list[list_num], dic_status)
             return
 
+
         # 切片成功，记录日志
         time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         log_str = str(time_now) + "\t\t文件名=" + videoid + "\t切片成功\n"
@@ -250,30 +256,32 @@ def post_to_server(r,queue_name):
         # 假如读取不到结果,删除该队列
         if not dic:
             remove_queue(r, queue_name, video_id)
-
+            return
         # print(dic)
     else:
         # 读得到队列里面的内容，但是读取不到键值对，说明队列出现错误，应该删除当前的队列
         return
-    if dic:
-        filename = dic["filename"]
-        fail_num = dic["fail_num"]
-        url = dic["url"]
-        formdata = {
-            "videoid": dic["data_id"],
-            "cameracode": dic["cameracode"],
-            "resultAddress": dic["resultAddress"],
-            "time_start": dic["time_start"]  # 需要校准
-        }
+    # 这里字典是必定存在的，不存在的字典已经返回了
+    filename = dic["filename"]
+    fail_num = dic["fail_num"]
+    url = dic["url"]
+    formdata = {
+        "videoid": dic["data_id"],
+        "cameracode": dic["cameracode"],
+        "resultAddress": dic["resultAddress"],
+        "time_start": dic["time_start"]  # 需要校准
+    }
+    if os.path.exists(filename):
         files = {'fileData': open(filename, 'rb')}
     else:
         return False
+
     response = requests.post(url, data=formdata, files=files)
     # 获取视频名
     # 移除当前等待队列
     # 删除对应的键
     remove_queue(r,queue_name,video_id)
-    remove_key(r,video_id)
+    # remove_key(r,video_id) # 完成不用删除键值对的，重写会自动覆盖，只需要修改队列
 
     if response.status_code == 200:
         json_result = response.json()
@@ -288,26 +296,40 @@ def post_to_server(r,queue_name):
             write_queue(r,"finish_queue",video_id)
             set_values(r,video_id,dic)
             return True
-        # 错误码... 未添加错误代码处理
+        # 错误码
         elif json_result['error_code'] == 10001:
-            # 非本机网点id
             post_result_str += "\t非本机网点id" + "\tpost失败\n"
+            dic["fail_num"] += 5
         elif json_result['error_code'] == 10002:
-            # 视频文件太小
             post_result_str += "\t视频文件太小" + "\tpost失败\n"
+            dic["fail_num"] += 5
         elif json_result['error_code'] == 10003:
-            # 视频文件太小
-            post_result_str += "\t视频文件太小" + "\tpost失败\n"
+            post_result_str += "\t视频文件太大" + "\tpost失败\n"
+            dic["fail_num"] += 5
         elif json_result['error_code'] == 10009:
-            # 视频文件太小
-            post_result_str += "\t视频文件太小" + "\tpost失败\n"
+            post_result_str += "\t未在服务时间段" + "\tpost失败\n"
+            dic["fail_num"] += 5
         elif json_result['error_code'] == 10011:
-            # 视频文件太小
-            post_result_str += "\t视频文件太小" + "\tpost失败\n"
+            post_result_str += "\t上传失败" + "\tpost失败\n"
         elif json_result['error_code'] == 10012:
-            # 重复上传（正在推理中）
-            # 视频缺少帧数
-            post_result_str += "\t视频缺少帧数" + "\tpost失败"
+            post_result_str += "\t重复上传" + "\tpost失败"
+            # 删除文件和队列
+            remove_queue(r,queue_name,dic["data_id"])  # 根据文件名删除队列
+            # 文件是否删除，
+            if os.path.exists(dic["filename"]):
+                os.remove(filename)
+            return
+        elif json_result['error_code'] == 10013:
+            post_result_str += "\t缺少车道图	" + "\tpost失败"
+            dic["fail_num"] = 5
+        elif json_result['error_code'] == 10014:
+            post_result_str += "\t视频缺少帧数	" + "\tpost失败"
+            # 删除文件和队列
+            remove_queue(r,queue_name,dic["data_id"])  # 根据文件名删除队列
+            # 文件是否删除，
+            if os.path.exists(dic["filename"]):
+                os.remove(filename)
+            return
         record_message('post_result.log', post_result_str)
         # 这里肯定是失败的，次数+1
         dic["fail_num"] += 1
@@ -384,24 +406,25 @@ def read_jsonfile(filename):
 
 
 def init_redis():
-    pwd = "anlly12345"
-    host= '192.168.31.184'
+    json_data = read_jsonfile('config.json')
+
+    host = json_data['redis_host']
+    pwd = json_data['redis_pwd']
+    db = json_data['redis_db']
     # host= 'localhost'
     # pwd=''
-    redis_obj = Redis(host=host, port=6379, password=pwd, db=8,decode_responses=True)
+    redis_obj = Redis(host=host, port=6379, password=pwd, db=db,decode_responses=True)
     return redis_obj
-
 
 
 def main():
     r = init_redis()
-    json_data = read_jsonfile('config.json')
-    clear_file(int(json_data['timing']),r,'log',int(json_data['expire'])) # 3600*8 = 28800 8个小时
-    clear_file(int(json_data['timing']),r,'video',int(json_data['expire']))
+    clear_file(r,'log')
+    clear_file(r,'video')
     post_fail_file(7200, r) # 每两小时运行一次
     while True:
         json_data = read_jsonfile('config.json')
-        if json_data['flag'] == '1':
+        if json_data['flag']:
 
             times = int(json_data['times'])
             numbers = int(json_data['numbers'])

@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import platform
 import shutil
 
 import requests
@@ -14,7 +15,11 @@ from threading import Timer
 
 # 根据键值读字符串
 def get_values(r, key):
-    return eval(r.get(key))
+    dic = r.get(key)
+    if dic :
+        return eval(dic)
+    else:
+        return dic
 
 # dic 字典
 def set_values(r, key, dic):
@@ -69,7 +74,7 @@ def get_days_list(num):
 
 def clear_file(r, path):
     json_data = read_jsonfile('config.json')
-    timing = int(json_data["timing"]) * 10
+    timing = int(json_data["timing"]) * 86400
     num = int(json_data['expire'])
 
     if not os.path.exists(path):
@@ -171,19 +176,24 @@ def cut_video(r, list_num, rtmp_list, cut_time):
             log_str = "开始时间:" + str(time_start) + "\t\t结束时间:" + str(time_now) + "\t切片地址=" + rtmp_list[
                 list_num] + "\t视频长度为0，切片失败\n"
             record_message("cut_result.log", log_str)
-            rtmp_url = read_queue(r, "status_queue")
-            if rtmp_url:
-                dic_status = get_values(r, rtmp_url)
-                # 假如读取不到状态列表的键值对，应该删除这个内容
-                if not dic_status:
-                    remove_queue(r, 'status_queue')
-            else:
-                return
-            dic_status["fail_num"] += 1
-            if dic_status["fail_num"] >= 5:
-                dic_status['status'] = 'fail'
+            # read_queue 默认读到的是第一个
 
-            write_queue(r, "status_queue", rtmp_list[list_num])  # 写入rtmp_url为集合的值
+            dic_status = get_values(r, rtmp_list[list_num])
+            # 键值对存在的
+            if dic_status:
+                dic_status["fail_num"] += 1
+                if dic_status["fail_num"] >= 5:
+                    dic_status['status'] = 'fail'
+            # 键值对不存在的,第一次就失败了
+            else:
+                dic_status = {
+                    "num": list_num + 1,
+                    "rtmp_url": rtmp_list[list_num],
+                    "fail_num": 1,
+                    "status": "normal"
+                }
+
+            write_queue(r, "status_set", rtmp_list[list_num])  # 写入rtmp_url为集合的值
             set_values(r, rtmp_list[list_num], dic_status)
             return
 
@@ -202,10 +212,10 @@ def cut_video(r, list_num, rtmp_list, cut_time):
             "fail_num": 0,
             "status": "normal"
         }
-        write_queue(r,"status_queue",rtmp_list[list_num]) # 写入rtmp_url为集合的值
+        write_queue(r,"status_set",rtmp_list[list_num]) # 写入rtmp_url为集合的值
         set_values(r,rtmp_list[list_num],dic_status)
 
-        # 将数据写入队列
+        # 将数据写入等待队列
         json_data = read_jsonfile('config.json')
 
         dic = {
@@ -227,19 +237,22 @@ def cut_video(r, list_num, rtmp_list, cut_time):
         time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         log_str = "开始时间:" + str(time_start) + "\t\t结束时间:"+str(time_now) + "\t切片地址=" + rtmp_list[list_num] + "\t切片失败\n"
         record_message("cut_result.log", log_str)
-        rtmp_url = read_queue(r, "status_queue")
-        if rtmp_url:
-            dic_status = get_values(r, rtmp_url)
-            # 假如读取不到状态列表的键值对，应该删除这个内容
-            if not dic_status:
-                remove_queue(r,'status_queue')
-        else:
-            return
-        dic_status["fail_num"] += 1
-        if dic_status["fail_num"] >=5:
-            dic_status['status'] = 'fail'
 
-        write_queue(r, "status_queue", rtmp_list[list_num])  # 写入rtmp_url为集合的值
+        dic_status = get_values(r, rtmp_list[list_num])
+        # 键值对存在的
+        if dic_status:
+            dic_status["fail_num"] += 1
+            if dic_status["fail_num"] >= 5:
+                dic_status['status'] = 'fail'
+        # 键值对不存在的,第一次就失败了
+        else:
+            dic_status = {
+                "num": list_num + 1,
+                "rtmp_url": rtmp_list[list_num],
+                "fail_num": 1,
+                "status": "normal"
+            }
+        write_queue(r, "status_set", rtmp_list[list_num])  # 写入rtmp_url为集合的值
         set_values(r, rtmp_list[list_num], dic_status)
 
 
@@ -406,11 +419,14 @@ def read_jsonfile(filename):
 
 
 def init_redis():
-    json_data = read_jsonfile('config.json')
+    # json_data = read_jsonfile('config.json')
 
-    host = json_data['redis_host']
+    host = '192.168.31.249'
     pwd = "anlly12345"
-    db = 0
+    if platform.system() == 'Windows':
+        db = 8
+    elif platform.system() == 'Linux':
+        db = 0
     # host= 'localhost'
     # pwd=''
     redis_obj = Redis(host=host, port=6379, password=pwd, db=db,decode_responses=True)

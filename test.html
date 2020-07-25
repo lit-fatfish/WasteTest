@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>后台管理系统</title>
+
+    <script type="text/javascript" src="/static/axios.min.js"></script>
+    <script type="text/javascript" src="/static/vue.min.js"></script>
+    <link rel="stylesheet" href="/static/bootstrap-3.3.7/css/bootstrap.min.css">
+    <script type="text/javascript" src="/static/jquery-3.3.1.min.js"></script>
+    <script type="text/javascript" src="/static/bootstrap-3.3.7/js/bootstrap.min.js"></script>
+    <!-- 引入样式 -->
+    <!-- <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css"> -->
+    <!-- 引入组件库 -->
+    <!-- <script src="https://unpkg.com/element-ui/lib/index.js"></script> -->
+</head>
+<body>
+{% raw %}
+
+
+<div class="contaier">
+
+
+    <div id="app">
+        <!-- Single button -->
+        <div>
+            <div class="btn-group ">
+                <button type="button" class="btn btn-primary dropdown-toggle " data-toggle="dropdown"
+                        aria-haspopup="true"
+                        aria-expanded="false">
+                    队列状态 <span class="caret"></span>
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a href="#" @click="finish_list">完成列表</a></li>
+                    <li><a href="#" @click="wait_list">等待列表</a></li>
+                    <li><a href="#" @click="fail_list">失败列表</a></li>
+                </ul>
+            </div>
+            <button class="btn btn-primary" @click="show_status" type="button">显示状态</button>
+            <button class="btn btn-primary" @click="config_file" type="button">设置配置文件</button>
+        </div>
+
+        <br>
+        <!-- <div style="height: 150px">{{ todos }}</div> -->
+        <div>
+            <span class="badge">完成数量：{{queue_num.finish_queue}}</span>
+            <span class="badge text-muted">等待数量：{{queue_num.wait_queue}}</span>
+            <span class="badge text-danger">失败数量：{{queue_num.fail_queue}}</span>
+
+        </div>
+        <br>
+        <div v-if="todos">
+            <div class="row">
+                <div class="col-sm-6 col-sm-offset-3 col-xs-8 col-xs-offset-2 col-lg-10 col-lg-offset-1">
+                    <h3 v-if="seen_finish" style="text-align: center">{{ title }}</h3>
+                    <table v-if="seen_finish" class="table table-bordered table-hover">
+                        <tr >
+                            <th>序号</th>
+                            <th>开始时间</th>
+                            <th>完整路径</th>
+                            <th>上传地址</th>
+                            <th>文件名</th>
+                            <th>摄像头ID</th>
+                            <th>回调地址</th>
+                            <th>失败次数</th>
+                            <th v-if="title==='失败列表'">上传</th>
+                            <th v-if="title==='失败列表'">
+                                <div style="display: inline-block;width: 50px;">
+                                    <div >
+                                        <label>
+                                            <input @click="check_all_func" type="checkbox" v-model="check_all"> 全选
+                                        </label>
+                                    </div>
+                                </div>
+                            </th>
+
+                        </tr>
+                        <tr v-for="(todo,index) in todos">
+                            <td>{{ index +1 }}</td>
+                            <td>{{ todo.time_start }}</td>
+                            <td>{{ todo.filename }}</td>
+                            <td>{{ todo.url }}</td>
+                            <td>{{ todo.data_id }}</td>
+                            <td>{{ todo.cameracode }}</td>
+                            <td>{{ todo.resultAddress }}</td>
+                            <td>{{ todo.fail_num }}</td>
+                            <td v-if="title==='失败列表'">
+                                <div style="display: inline-block;width: 50px;">
+                                    <a @click="upload(todo.data_id)" class="btn btn-success" href="#">
+                                        上传
+                                    </a>
+
+                                </div>
+                            
+                            </td>
+                            <td v-if="title==='失败列表'">
+                                <label style="margin-left: 10px;">
+                                    <input :value="todo.data_id" v-model="check_list" type="checkbox">
+                                </label>
+                            </td>
+
+                        </tr>
+                    </table>
+                    <div v-if="title==='失败列表'">
+                        <button class="btn btn-success pull-right" @click="upload_all" >一键上传</button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        <div v-else>
+            <p v-if="seen_finish">暂无数据</p>
+        </div>
+
+        <div v-if="todos_status">
+            <div v-if="seen_status">
+                <div class="row">
+                    <div class="col-sm-6 col-sm-offset-3 col-xs-8 col-xs-offset-2 col-lg-10 col-lg-offset-1">
+                        <h3 v-if="seen_status" style="text-align: center">{{ title }}</h3>
+                        <table class="table table-bordered table-hover ">
+                            <tr>
+                                <th>序号</th>
+                                <th>视频地址</th>
+                                <th>状态</th>
+                                <th>失败次数</th>
+
+                            </tr>
+                            <tr v-for="todo in todos_status">
+                                <td>{{ todo.num }}</td>
+                                <td>{{ todo.rtmp_url }}</td>
+                                <td>{{ todo.status }}</td>
+                                <td>{{ todo.fail_num }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div v-else>
+            <p v-if="seen_status">暂无数据</p>
+        </div>
+
+                <div id="app_form" v-if="seen_form">
+                    <div class="row">
+                        <div class="col-sm-6 col-sm-offset-3 col-xs-8 col-xs-offset-2 col-lg-10 col-lg-offset-1">
+                            <form>
+                                <div class="form-inline" style="width: auto">
+                                    <label for="upload_url">上传地址</label>
+                                    <input v-model="upload_url" type="url" class="form-control" id="upload_url"
+                                           placeholder="上传地址">
+                                    <label for="resultAddress">回调地址</label>
+                                    <input v-model="resultAddress" type="url" class="form-control" id="resultAddress"
+                                           placeholder="回调地址">
+                                    <label for="cameracode">网点ID</label>
+                                    <input v-model="cameracode" type="text" class="form-control" id="cameracode"
+                                           placeholder="摄像头ID">
+                                </div>
+                                <br>
+                                <div class="form-group">
+                                    <label for="cut_time">切片时间(s)</label>
+                                    <input v-model="cut_time" type="text" class="form-control" id="cut_time"
+                                           placeholder="每个视频的切片时间">
+                                    <!-- <label for="numbers">总路数</label>
+                                    <input v-model="numbers" type="text" class="form-control" id="numbers"
+                                           placeholder="总路数"> -->
+                                    <label for="times">切片总时间(min)</label>
+                                    <input v-model="times" type="text" class="form-control" id="times"
+                                           placeholder="总路数切片需要的时间">
+                                    <label>视频源地址列表（每个地址一行，回车换行）</label>
+                                    <textarea v-model="RTMP_list" style="overflow-x: auto;" class="form-control"
+                                              rows="3"
+                                              placeholder="每个地址一行"></textarea>
+
+                                </div>
+                                <br>
+
+                                <div class="form-group">
+                                    <label for="expire">过期时间(天)</label>
+                                    <input v-model="expire" type="text" class="form-control" id="expire"
+                                           placeholder="过期时间">
+                                    <label for="timing">清理间隔时间(天)</label>
+                                    <input v-model="timing" type="text" class="form-control" id="timing"
+                                           placeholder="每隔多长时间清理文件">
+
+                                </div>
+                                <br>
+
+                                <div class="form-group">
+                                    <!-- <label for="redis_host">Redis主机</label>
+                                    <input v-model="redis_host" type="text" class="form-control" id="redis_host"
+                                           placeholder="Redis主机"> -->
+                                    <!-- <label for="redis_pwd">Redis主机密码</label>
+                                    <input v-model="redis_pwd" type="password" class="form-control" id="redis_pwd"
+                                           placeholder="Redis主机密码">
+                                    <label for="redis_db">Redis数据库</label>
+                                    <input v-model="redis_db" type="text" class="form-control" id="redis_db"
+                                           placeholder="Redis数据库(0)"> -->
+                                </div>
+
+                                <div class="checkbox">
+                                    <label>
+                                        <input v-model="flag" type="checkbox"> 启动程序
+                                    </label>
+                                </div>
+
+                                <button @click="submit_config" class="btn btn-primary pull-right">修改配置</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endraw %}
+<script>
+    new Vue({
+        el: '#app111',
+        data: function () {
+            return {visible: false}
+        }
+    })
+</script>
+<script>
+    new Vue({
+        el: '#app',
+        data: function () {
+            return {
+                //visible: false,
+                message: '',
+                title: '完成列表',
+                upload_url: '',
+                resultAddress: '',
+                cameracode: '',
+                RTMP_list: '',
+                cut_time: '',
+                numbers: '',
+                times: '',
+                flag: true,
+                expire: '',
+                timing: '',
+                redis_host: '',
+                redis_pwd: '',
+                redis_db: '',
+
+                seen_finish: true,
+                seen_status: false,
+                seen_form: false,
+                check_list:[],
+                check_all:false,
+                todos: [
+                    {
+                        "data_id": "",
+                        "fail_num": 0,
+                        "filename": "",
+                        "resultAddress": "",
+                        "time_start": "",
+                        "url": ""
+                    },
+
+                ],
+                todos_status:[
+                    {
+                        "fail_num": "",
+                        "num": 0,
+                        "rtmp_url": "",
+                        "status": ""
+                    }
+                ],
+                queue_num: [
+                    {
+                        "finish_queue": 0,
+                        "wait_queue": 0,
+                        "fail_queue": 0
+                    }
+                ]
+            }
+        },
+
+        mounted() {
+            // 进入页面自动调用此函数
+            const self = this
+            axios.post("/info").then((data) => {
+                console.log("data: ", data)
+
+                self.todos = data.data
+                self.seen_finish = true
+                self.seen_status = false
+                self.seen_form = false
+                console.log("data: ", data.data[0])
+
+            })
+                .catch((err) => {
+                    console.log("err: ", err)
+                })
+            // 请求队列数
+            axios.post("/queue_num").then((data) => {
+                console.log("data: ", data)
+                self.queue_num = data.data
+            })
+                .catch((err) => {
+                    console.log("err: ", err)
+                })
+
+        },
+        methods: {
+            show_status: function () {
+                const self = this
+                axios.post("/status").then((data) => {
+                    console.log("data: ", data)
+                    if(data){
+                        self.todos_status = data.data
+                        console.log(self.todos_status)
+                    }else {
+                        self.todos_status = ''
+
+                    }
+                    self.seen_finish = false
+                    self.seen_status = true
+                    self.seen_form = false
+                    self.title = '视频源状态'
+
+
+                })
+                .catch((err) => {
+                    console.log("err: ", err)
+                })
+            },
+            config_file: function () {
+                const self = this
+                axios.get("/config_file").then((data) => {
+                    console.log("data: ", data)
+                    if(data){
+                        self.upload_url = data.data['url']
+                        self.resultAddress = data.data['resultAddress'],
+                        self.cameracode = data.data['cameracode'],
+                        self.cut_time = data.data['cut_time'],
+                        self.times = data.data['times'],
+                        self.flag = data.data['flag']
+
+                        self.expire = data.data['expire'],
+                        self.timing = data.data['timing'],
+
+                        self.redis_host = data.data['redis_host'],
+                        self.redis_pwd = data.data['redis_pwd'],
+                        self.redis_db = data.data['redis_db'],
+                        self.RTMP_list = data.data['RTMP_list'],
+                        self.numbers = self.RTMP_list.length
+
+
+                        // 数组转字符串，并换行
+                        var str = ""
+                        $.each(self.RTMP_list, function (i, val) {
+                            if ((i + 1) !== self.RTMP_list.length)
+                                val += "\n"
+                            str += val
+                        })
+                        self.RTMP_list = str
+                    }
+                    self.seen_finish = false
+                        self.seen_status = false
+                        self.seen_form = true
+                        self.title = ''
+
+
+//                        self.todos= data.data
+
+                })
+                    .catch((err) => {
+                        console.log("err: ", err)
+                    })
+            },
+            submit_config: function () {
+                const self = this
+                // 在post之前需要转换成字符串的self.RTMP转成数组
+                self.RTMP_list = self.RTMP_list.trim()
+
+                var stringResult = self.RTMP_list.split('\n');
+                self.RTMP_list = stringResult
+
+                axios.post("/config_file", {
+                    "url": self.upload_url,
+                    "numbers": self.RTMP_list.length,
+                    "resultAddress": self.resultAddress,
+                    "cameracode": self.cameracode,
+                    "cut_time": self.cut_time,
+                    "times": self.times,
+                    "RTMP_list": self.RTMP_list,
+                    "expire": self.expire,
+                    "timing": self.timing,
+                    "redis_host": self.redis_host,
+                    "redis_pwd": self.redis_pwd,
+                    "redis_db": self.redis_db,
+                    "flag": self.flag,
+                }).then((data) => {
+                    console.log("data: ", data)
+                    self.upload_url = data.data['url']
+                    self.resultAddress = data.data['resultAddress']
+                    self.cameracode = data.data['cameracode']
+                    self.cut_time = data.data['cut_time']
+                    self.times = data.data['times']
+                    self.RTMP_list = data.data['RTMP_list']
+                    self.numbers = self.RTMP_list.length
+
+                    self.title = ''
+                    self.expire = data.data['expire']
+                    self.timing = data.data['timing']
+                    self.redis_host = data.data['redis_host']
+                    self.redis_pwd = data.data['redis_pwd']
+                    self.redis_db = data.data['redis_db']
+//                        self.todos= data.data
+                    self.seen_finish = false
+                    self.seen_status = false
+                    self.seen_form = true
+                    var str = ""
+                    $.each(self.RTMP_list, function (i, val) {
+                        if ((i + 1) !== self.RTMP_list.length)
+                            val += "\n"
+                        str += val
+                    })
+                    self.RTMP_list = str
+                    alert("修改成功")
+
+                })
+                    .catch((err) => {
+                        console.log("err: ", err)
+                    })
+            },
+            finish_list: function () {
+                const self = this
+                axios.post("/info").then((data) => {
+                    console.log("data: ", data)
+                    self.todos = data.data
+                    self.seen_finish = true
+                    self.seen_status = false
+                    self.seen_form = false
+                    self.title = '完成列表'
+                    console.log("data: ", data.data[0])
+                })
+                    .catch((err) => {
+                        console.log("err: ", err)
+                    })
+            },
+            wait_list: function () {
+                const self = this
+                axios.post("/wait_list").then((data) => {
+                    console.log("data: ", data)
+                    self.todos = data.data
+                    self.seen_finish = true
+                    self.seen_status = false
+                    self.seen_form = false
+                    self.title = '等待列表'
+                    console.log("data: ", data.data[0])
+                })
+                    .catch((err) => {
+                        console.log("err: ", err)
+                    })
+            },
+            fail_list: function () {
+                const self = this
+                axios.post("/fail_list").then((data) => {
+                    console.log("data: ", data)
+
+                    self.todos = data.data
+                    self.seen_finish = true
+                    self.seen_status = false
+                    self.seen_form = false
+                    self.title = '失败列表'
+                    console.log("data: ", data.data[0])
+                })
+                .catch((err) => {
+                    console.log("err: ", err)
+                })
+            },
+            upload: function (id) {
+                const self = this
+                console.log(id) //视频id
+                axios.post("/upload", {
+                    "data_id": id
+                }).then((data) => {
+                    console.log("data: ", data)
+                    console.log("data: ", data.data['success'])
+                    if (data.data['success'] == 1){
+                        alert("上传成功")
+                    }else{
+                        alert(("上传失败"))
+                    }
+
+                })
+                .catch((err) => {
+                    console.log("err: ", err)
+                })
+            },
+            upload_all:function(){
+                const self = this
+                // 获取所有的勾选列表，并上传给后台
+
+                axios.post("/upload_all", {
+                    "check_list": self.check_list
+                }).then((data) => {
+                    console.log("data: ", data)
+                    alert("成功个数=" + data.data['success'] + "  失败个数=" + data.data['fail'])
+                })
+                .catch((err) => {
+                    console.log("err: ", err)
+                })
+
+            },
+            check_all_func:function () {
+                const self = this
+                console.log(self.check_all)
+                //点击全部勾选之前，是false的，这个函数执行后才变true
+                if(!self.check_all){
+                    $.each(self.todos, function (i, val) {
+                            self.check_list[i] = val['data_id']
+                        })
+                }else {
+                    self.check_list = []
+                }
+
+
+            }
+        }
+    })
+    // var vm_form = new Vue({
+    //     el: '#vm_form' ,
+    //     data:{
+    //         message:''
+    //     }
+    // })
+</script>
+</body>
+</html>

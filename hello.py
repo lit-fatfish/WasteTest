@@ -16,7 +16,11 @@ app = Flask(__name__)
 #     return render_template('home.html')
 # 根据键值读字符串
 def get_values(r, key):
-    return eval(r.get(key))
+    dic = r.get(key)
+    if dic :
+        return eval(dic)
+    else:
+        return dic
 
 
 # dic 字典
@@ -47,11 +51,14 @@ def read_queue(r,queue_name):
 
 def read_all_queue(r,queue_name,num):
     range_list = r.zrange(queue_name, 0, num)
+    # print(range_list)
     list = []
     if range_list:
         for data in range_list:
-            set_del_task = json.loads(data)
-            list.append(set_del_task)
+            if type(data) != type({}):
+                set_del_task = json.loads(data)
+                list.append(set_del_task)
+        # print(list)
         return list
     else:
         return False
@@ -71,7 +78,7 @@ def init_redis():
     pwd = "anlly12345"
     host = '192.168.31.249'
     if platform.system() == 'Windows':
-        db = 8
+        db = 0
     elif platform.system() == 'Linux':
         db = 0
     # host = 'localhost'
@@ -126,8 +133,10 @@ def wait_list():
             datas = datas[0:15]
         list = []
         for data in datas:
-            temp = get_values(r, data)
-            list.append(temp)
+            # print(data)
+            if type(data) != type({}):
+                temp = get_values(r, data)
+                list.append(temp)
         datas = list
 
     return jsonify(datas)
@@ -141,14 +150,16 @@ def fail_list():
     # datas = r1.zrange("finish_queue",0,10)
 
     datas = read_all_queue(r,"fail_queue",-1)
-
+    # print(datas)
     if datas:
         if len(datas) > 15:
             datas = datas[0:15]
         list = []
         for data in datas:
-            temp = get_values(r, data)
-            list.append(temp)
+            # print(data)
+            if type(data) != type({}):
+                temp = get_values(r, data)
+                list.append(temp)
         datas = list
 
     return jsonify(datas)
@@ -181,7 +192,7 @@ def status():
         return jsonify(False)
 
 @app.route('/upload', methods=['GET', 'POST'])
-def uoload():
+def upload():
     # 获取上传到这里的文件名，然后读取键值对，去上传文件，并返回结果
     # 一个开始尝试
     # 通过文件名获取到字典，赋值带着参数去post，post结果考虑，
@@ -243,7 +254,7 @@ def uoload_all():
     dic_json = request.get_json()
     if dic_json:
         for video_id in dic_json["check_list"]:
-            print(video_id)
+            # print(video_id)
             dic = get_values(r, video_id)
             if dic:
                 filename = dic["filename"]
@@ -307,11 +318,11 @@ def config_file():
         # 同时删除对应的键值对
 
         rtmp_list = read_all_queue(r,"status_set",-1)
-        print("rtmp_list:",rtmp_list)
+        # print("rtmp_list:",rtmp_list)
 
         if rtmp_list:
             for rtmp in rtmp_list:
-                print("rtmp:",rtmp)
+                # print("rtmp:",rtmp)
                 remove_key(r,rtmp)
         r.delete("status_set")
     # print(os.getcwd()) # 打印当前路径 D:\MyProgram\PyCharm 2020.1.3\jbr\bin

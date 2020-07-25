@@ -19,7 +19,7 @@ def get_values(r, key):
     if dic :
         return eval(dic)
     else:
-        return dic
+        return False
 
 # dic 字典
 def set_values(r, key, dic):
@@ -264,6 +264,10 @@ def post_to_server(r,queue_name):
     time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     # 从Redis读取文件
     video_id = read_queue(r, queue_name)
+    # 假如获取到的是一个字典，那获取键值对的时候，会出错，应该直接删除该队列
+    if type(video_id) == type({}):
+        remove_queue(r, queue_name, video_id)
+        return
     if video_id:
         dic = get_values(r,video_id)
         # 假如读取不到结果,删除该队列
@@ -287,6 +291,7 @@ def post_to_server(r,queue_name):
     if os.path.exists(filename):
         files = {'fileData': open(filename, 'rb')}
     else:
+        print("无法读取到文件")
         return False
 
     response = requests.post(url, data=formdata, files=files)
@@ -334,7 +339,7 @@ def post_to_server(r,queue_name):
             return
         elif json_result['error_code'] == 10013:
             post_result_str += "\t缺少车道图	" + "\tpost失败"
-            dic["fail_num"] = 5
+            dic["fail_num"] += 5
         elif json_result['error_code'] == 10014:
             post_result_str += "\t视频缺少帧数	" + "\tpost失败"
             # 删除文件和队列
@@ -355,13 +360,13 @@ def post_to_server(r,queue_name):
         }
         key_post = 'fail' + dic["data_id"]
         set_values(r, key_post, dic_post)
-
+        fail_num = dic["fail_num"]
         if fail_num >= 5:
             # 加入失败队列
-            write_queue(r,"fail_queue",dic)
+            write_queue(r,"fail_queue",dic["data_id"])
         else:
             # 重新写到等待队列
-            write_queue(r,"wait_queue",dic)
+            write_queue(r,"wait_queue",dic["data_id"])
         set_values(r, video_id, dic)
     else:
         # 服务器返回的状态码不对，比如404之类的
@@ -372,6 +377,7 @@ def post_to_server(r,queue_name):
 # 上传到服务器线程
 
 def post_thered(r, queue_name):
+
     t = threading.Thread(target=post_to_server, args=(r,queue_name,))
     t.start()
 

@@ -162,7 +162,9 @@ def cut_video(r, list_num, rtmp_list, cut_time):
     if not os.path.exists(foldername):
         os.mkdir(foldername)
     filename = os.path.join(foldername, videoid + '.mp4')
-    cmd = "ffmpeg -i " + rtmp_list[list_num] + " -t " + interval + " -c copy -f mp4 -y " + filename
+    rtmp_url = rtmp_list[list_num]["rtmp_url"]  # 视频源地址
+    print(rtmp_url)
+    cmd = "ffmpeg -i " + rtmp_url + " -t " + interval + " -c copy -f mp4 -y " + filename
     val = os.system(cmd)
     print(val)
 
@@ -178,7 +180,7 @@ def cut_video(r, list_num, rtmp_list, cut_time):
             record_message("cut_result.log", log_str)
             # read_queue 默认读到的是第一个
 
-            dic_status = get_values(r, rtmp_list[list_num])
+            dic_status = get_values(r, rtmp_url)
             # 键值对存在的
             if dic_status:
                 dic_status["fail_num"] += 1
@@ -188,13 +190,13 @@ def cut_video(r, list_num, rtmp_list, cut_time):
             else:
                 dic_status = {
                     "num": list_num + 1,
-                    "rtmp_url": rtmp_list[list_num],
+                    "rtmp_url": rtmp_url,
                     "fail_num": 1,
                     "status": "normal"
                 }
 
-            write_queue(r, "status_set", rtmp_list[list_num])  # 写入rtmp_url为集合的值
-            set_values(r, rtmp_list[list_num], dic_status)
+            write_queue(r, "status_set", rtmp_url)  # 写入rtmp_url为集合的值
+            set_values(r,rtmp_url, dic_status)
             return
 
 
@@ -208,23 +210,27 @@ def cut_video(r, list_num, rtmp_list, cut_time):
         # 记录当前路的状态
         dic_status = {
             "num": list_num+1,
-            "rtmp_url": rtmp_list[list_num],
+            "rtmp_url": rtmp_url,
             "fail_num": 0,
             "status": "normal"
         }
-        write_queue(r,"status_set",rtmp_list[list_num]) # 写入rtmp_url为集合的值
-        set_values(r,rtmp_list[list_num],dic_status)
+        write_queue(r,"status_set",rtmp_url) # 写入rtmp_url为集合的值
+        set_values(r,rtmp_url,dic_status)
 
         # 将数据写入等待队列
-        json_data = read_jsonfile('config.json')
+        # json_data = read_jsonfile('config.json')
+
+        cameracode = rtmp_list[list_num]['cameracode']
+        resultAddress = rtmp_list[list_num]['resultAddress']
+        url = rtmp_list[list_num]['url']
 
         dic = {
             "filename": filename,
             "fail_num": 0,
-            "url": json_data['url'],
+            "url": url,
             "data_id": videoid,
-            "cameracode": json_data['cameracode'],
-            "resultAddress": json_data['resultAddress'],
+            "cameracode": cameracode,
+            "resultAddress": resultAddress,
             "time_start": str(time_now)
         }
 
@@ -235,10 +241,10 @@ def cut_video(r, list_num, rtmp_list, cut_time):
     else:
         # 切片不成功
         time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        log_str = "开始时间:" + str(time_start) + "\t\t结束时间:"+str(time_now) + "\t切片地址=" + rtmp_list[list_num] + "\t切片失败\n"
+        log_str = "开始时间:" + str(time_start) + "\t\t结束时间:"+str(time_now) + "\t切片地址=" + rtmp_url + "\t切片失败\n"
         record_message("cut_result.log", log_str)
 
-        dic_status = get_values(r, rtmp_list[list_num])
+        dic_status = get_values(r,rtmp_url)
         # 键值对存在的
         if dic_status:
             dic_status["fail_num"] += 1
@@ -248,12 +254,12 @@ def cut_video(r, list_num, rtmp_list, cut_time):
         else:
             dic_status = {
                 "num": list_num + 1,
-                "rtmp_url": rtmp_list[list_num],
+                "rtmp_url": rtmp_url,
                 "fail_num": 1,
                 "status": "normal"
             }
-        write_queue(r, "status_set", rtmp_list[list_num])  # 写入rtmp_url为集合的值
-        set_values(r, rtmp_list[list_num], dic_status)
+        write_queue(r, "status_set", rtmp_url)  # 写入rtmp_url为集合的值
+        set_values(r, rtmp_url, dic_status)
 
 
 # 将保存好的视频post到服务器
@@ -425,13 +431,13 @@ def read_jsonfile(filename):
 
 
 def init_redis():
-    # json_data = read_jsonfile('config.json')
-
-    host = '192.168.31.249'
     pwd = "anlly12345"
+    # docker不能存在主机名，因为需要部署到好多服务器
     if platform.system() == 'Windows':
+        host = '192.168.31.249'
         db = 8
     elif platform.system() == 'Linux':
+        host = 'redis'
         db = 0
     # host= 'localhost'
     # pwd=''
@@ -446,6 +452,7 @@ def main():
     post_fail_file(7200, r) # 每两小时运行一次
     while True:
         json_data = read_jsonfile('config.json')
+        # print(json_data)
         if json_data['flag']:
 
             times = int(json_data['times'])

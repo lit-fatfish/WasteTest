@@ -76,10 +76,12 @@ def read_queue_num(r, queue_name):
 
 def init_redis():
     pwd = "anlly12345"
-    host = '192.168.31.249'
+    # docker不能存在主机名，因为需要部署到好多服务器
     if platform.system() == 'Windows':
-        db = 0
+        host = '192.168.31.249'
+        db = 8
     elif platform.system() == 'Linux':
+        host = 'redis'
         db = 0
     # host = 'localhost'
     # pwd = ''
@@ -103,8 +105,8 @@ def home():
     return render_template('test.html')
 
 
-@app.route('/info', methods=['GET', 'POST'])
-def info():
+@app.route('/finish_list', methods=['GET', 'POST'])
+def finish_list():
     # r = init_redis()
     # r = redis.Redis(host='localhost', port=6379,db=8, decode_responses=True)
     # 获取到完成队列的列表
@@ -158,7 +160,10 @@ def fail_list():
         for data in datas:
             # print(data)
             if type(data) != type({}):
-                temp = get_values(r, data)
+                temp = get_values(r, data) # 获取到的是一个字典，把失败的状态码也给它返回去
+                fail_str = 'fail'+data
+                fail_dic = get_values(r,fail_str)
+                temp['error_code'] = fail_dic['error_code']
                 list.append(temp)
         datas = list
 
@@ -335,9 +340,9 @@ def config_file():
 if __name__ == '__main__':
     r = init_redis()
     if platform.system() == 'Windows':
-        app.run(debug=True, host='127.0.0.1')
+        app.run(debug=True, host='127.0.0.1',port=5000)
 
     elif platform.system() == 'Linux':
-        app.run(debug = True,host = '0.0.0.0')
+        app.run(debug = True,host = '0.0.0.0',port=7000)
 
 

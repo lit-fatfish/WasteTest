@@ -5,11 +5,12 @@ from flask import Flask, render_template, request, jsonify
 import json
 import time
 import platform
+from flask_cors import CORS
 
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-
+CORS(app, supports_credentials=True)  # 跨域
 
 # @app.route('/')
 # def index():
@@ -79,7 +80,7 @@ def init_redis():
     # docker不能存在主机名，因为需要部署到好多服务器
     if platform.system() == 'Windows':
         host = '192.168.31.249'
-        db = 8
+        db = 0
     elif platform.system() == 'Linux':
         host = 'redis'
         db = 0
@@ -215,7 +216,10 @@ def upload():
     dic = get_values(r,video_id)
     if dic:
         filename = dic["filename"]
-        # fail_num = dic["fail_num"]
+        if not os.path.exists(filename):
+            datas['fail'] += 1
+            return jsonify(datas)
+            # fail_num = dic["fail_num"]
         url = dic["url"]
         formdata = {
             "videoid": dic["data_id"],
@@ -263,34 +267,38 @@ def uoload_all():
             dic = get_values(r, video_id)
             if dic:
                 filename = dic["filename"]
-                # fail_num = dic["fail_num"]
-                url = dic["url"]
-                formdata = {
-                    "videoid": dic["data_id"],
-                    "cameracode": dic["cameracode"],
-                    "resultAddress": dic["resultAddress"],
-                    "time_start": dic["time_start"]  # 需要校准
-                }
-                files = {'fileData': open(filename, 'rb')}
-                # try:
-                #     response = requests.post(url, data=formdata, files=files)
-                # except:
-                #     return jsonify({"error", "response error"})
-                response = requests.post(url, data=formdata, files=files)
-                if response.status_code == 200:
-                    json_result = response.json()
-                    # 这里的data_id 采用从redis中读取文件名，因为有可能返回的json文件无法获得文件名
-                    if json_result['error_code'] == 0:
-                        # 加入成功队列
-                        remove_queue(r, "fail_queue", video_id)
-                        write_queue(r, "finish_queue", video_id)
-                        datas['success'] += 1
-                    else:
-                        datas['fail'] += 1
+                if os.path.exists(filename):
+                    # fail_num = dic["fail_num"]
+                    url = dic["url"]
+                    formdata = {
+                        "videoid": dic["data_id"],
+                        "cameracode": dic["cameracode"],
+                        "resultAddress": dic["resultAddress"],
+                        "time_start": dic["time_start"]  # 需要校准
+                    }
+                    files = {'fileData': open(filename, 'rb')}
+                    # try:
+                    #     response = requests.post(url, data=formdata, files=files)
+                    # except:
+                    #     return jsonify({"error", "response error"})
+                    response = requests.post(url, data=formdata, files=files)
+                    if response.status_code == 200:
+                        json_result = response.json()
+                        # 这里的data_id 采用从redis中读取文件名，因为有可能返回的json文件无法获得文件名
+                        if json_result['error_code'] == 0:
+                            # 加入成功队列
+                            remove_queue(r, "fail_queue", video_id)
+                            write_queue(r, "finish_queue", video_id)
+                            datas['success'] += 1
+                        else:
+                            datas['fail'] += 1
 
+                    else:
+                        # 服务器返回的状态码不对，比如404之类的
+                        datas['fail'] += 1
                 else:
-                    # 服务器返回的状态码不对，比如404之类的
                     datas['fail'] += 1
+
     return jsonify(datas)    #
 
 

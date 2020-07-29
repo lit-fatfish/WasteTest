@@ -326,15 +326,16 @@ def config_file():
         # 写入data文件
         # if os.path.exists(filename):
         with open(filename, 'w') as f:
-            json.dump(dic, f)
+            f.write(json.dumps(dic,indent=2))
+            # json.dump(dic, f)
         # 写入配置文件成功时，应该删除当前的状态队列，删除整个键
         # 同时删除对应的键值对
 
-        rtmp_list = read_all_queue(r,"status_set",-1)
-        # print("rtmp_list:",rtmp_list)
+        rtsp_list = read_all_queue(r,"status_set",-1)
+        # print("rtsp_list:",rtsp_list)
 
-        if rtmp_list:
-            for rtmp in rtmp_list:
+        if rtsp_list:
+            for rtmp in rtsp_list:
                 # print("rtmp:",rtmp)
                 remove_key(r,rtmp)
         r.delete("status_set")
@@ -351,6 +352,6 @@ if __name__ == '__main__':
         app.run(debug=True, host='127.0.0.1',port=5000)
 
     elif platform.system() == 'Linux':
-        app.run(debug = True,host = '0.0.0.0',port=7000)
+        app.run(debug = True,host = '0.0.0.0',port=8003)
 
 

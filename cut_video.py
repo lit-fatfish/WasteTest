@@ -145,11 +145,11 @@ def record_message(filename, message_str):
 
 # 获取源视频，并保存在本地，并记录到Redis
 # list_num 列表的下标
-# rtmp_list 视频地址表
+# rtsp_list 视频地址表
 # cut_time 切片时间
 
 
-def cut_video(r, list_num, rtmp_list, cut_time):
+def cut_video(r, list_num, rtsp_list, cut_time):
     # 发送CMD命令，并保存视频到本地
     start_time = time.time()
     time_start = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
@@ -162,9 +162,9 @@ def cut_video(r, list_num, rtmp_list, cut_time):
     if not os.path.exists(foldername):
         os.mkdir(foldername)
     filename = os.path.join(foldername, videoid + '.mp4')
-    rtmp_url = rtmp_list[list_num]["rtmp_url"]  # 视频源地址
-    print(rtmp_url)
-    cmd = "ffmpeg -i " + rtmp_url + " -t " + interval + " -c copy -f mp4 -y " + filename
+    rtsp_url = rtsp_list[list_num]["rtsp_url"]  # 视频源地址
+    print(rtsp_url)
+    cmd = "ffmpeg -i " + rtsp_url + " -t " + interval + " -c copy -f mp4 -y " + filename
     val = os.system(cmd)
     print(val)
 
@@ -175,12 +175,12 @@ def cut_video(r, list_num, rtmp_list, cut_time):
             os.remove(filename)
             # 需要提前离开这个程序
             time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-            log_str = "开始时间:" + str(time_start) + "\t\t结束时间:" + str(time_now) + "\t切片地址=" + rtmp_list[
+            log_str = "开始时间:" + str(time_start) + "\t\t结束时间:" + str(time_now) + "\t切片地址=" + rtsp_list[
                 list_num] + "\t视频长度为0，切片失败\n"
             record_message("cut_result.log", log_str)
             # read_queue 默认读到的是第一个
 
-            dic_status = get_values(r, rtmp_url)
+            dic_status = get_values(r, rtsp_url)
             # 键值对存在的
             if dic_status:
                 dic_status["fail_num"] += 1
@@ -190,13 +190,13 @@ def cut_video(r, list_num, rtmp_list, cut_time):
             else:
                 dic_status = {
                     "num": list_num + 1,
-                    "rtmp_url": rtmp_url,
+                    "rtsp_url": rtsp_url,
                     "fail_num": 1,
                     "status": "normal"
                 }
 
-            write_queue(r, "status_set", rtmp_url)  # 写入rtmp_url为集合的值
-            set_values(r,rtmp_url, dic_status)
+            write_queue(r, "status_set", rtsp_url)  # 写入rtsp_url为集合的值
+            set_values(r,rtsp_url, dic_status)
             return
 
 
@@ -210,19 +210,19 @@ def cut_video(r, list_num, rtmp_list, cut_time):
         # 记录当前路的状态
         dic_status = {
             "num": list_num+1,
-            "rtmp_url": rtmp_url,
+            "rtsp_url": rtsp_url,
             "fail_num": 0,
             "status": "normal"
         }
-        write_queue(r,"status_set",rtmp_url) # 写入rtmp_url为集合的值
-        set_values(r,rtmp_url,dic_status)
+        write_queue(r,"status_set",rtsp_url) # 写入rtsp_url为集合的值
+        set_values(r,rtsp_url,dic_status)
 
         # 将数据写入等待队列
         # json_data = read_jsonfile('config.json')
 
-        cameracode = rtmp_list[list_num]['cameracode']
-        resultAddress = rtmp_list[list_num]['resultAddress']
-        url = rtmp_list[list_num]['url']
+        cameracode = rtsp_list[list_num]['cameracode']
+        resultAddress = rtsp_list[list_num]['resultAddress']
+        url = rtsp_list[list_num]['url']
 
         dic = {
             "filename": filename,
@@ -241,10 +241,10 @@ def cut_video(r, list_num, rtmp_list, cut_time):
     else:
         # 切片不成功
         time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        log_str = "开始时间:" + str(time_start) + "\t\t结束时间:"+str(time_now) + "\t切片地址=" + rtmp_url + "\t切片失败\n"
+        log_str = "开始时间:" + str(time_start) + "\t\t结束时间:"+str(time_now) + "\t切片地址=" + rtsp_url + "\t切片失败\n"
         record_message("cut_result.log", log_str)
 
-        dic_status = get_values(r,rtmp_url)
+        dic_status = get_values(r,rtsp_url)
         # 键值对存在的
         if dic_status:
             dic_status["fail_num"] += 1
@@ -254,12 +254,12 @@ def cut_video(r, list_num, rtmp_list, cut_time):
         else:
             dic_status = {
                 "num": list_num + 1,
-                "rtmp_url": rtmp_url,
+                "rtsp_url": rtsp_url,
                 "fail_num": 1,
                 "status": "normal"
             }
-        write_queue(r, "status_set", rtmp_url)  # 写入rtmp_url为集合的值
-        set_values(r, rtmp_url, dic_status)
+        write_queue(r, "status_set", rtsp_url)  # 写入rtsp_url为集合的值
+        set_values(r, rtsp_url, dic_status)
 
 
 # 将保存好的视频post到服务器
@@ -391,16 +391,16 @@ def post_thered(r, queue_name):
 # 多线程启动
 # redis 对象
 # num = 一次启动多少个进程，
-# numbers 启动的RTMP地址的下标
-# rtmp_list RMTP地址下标
+# numbers 启动的RTSP地址的下标
+# rtsp_list RMTP地址下标
 # cut_time 剪切时间
 
 
-def thread_start(r, num, numbers, rtmp_list, cut_time):
+def thread_start(r, num, numbers, rtsp_list, cut_time):
     t_obj = []
     # 一次启动num个线程
     for i in range(num):
-        t = threading.Thread(target=cut_video, args=(r,numbers - i - 1, rtmp_list, cut_time,))
+        t = threading.Thread(target=cut_video, args=(r,numbers - i - 1, rtsp_list, cut_time,))
         t_obj.append(t)
         t.start()
 
@@ -455,17 +455,17 @@ def main():
         # print(json_data)
         if json_data['flag']:
 
-            times = int(json_data['times'])
-            numbers = int(json_data['numbers'])
-            cut_time = int(json_data['cut_time'])
-            rtmp_list = json_data['RTMP_list']
-            num = int((int(json_data['numbers']) + 1) / times)  # 每分钟执行的个数
+            times = json_data['times']
+            numbers = len(json_data['RTSP_list'])
+            cut_time = json_data['cut_time']
+            rtsp_list = json_data['RTSP_list']
+            num = int( numbers + 1/ times)  # 每分钟执行的个数
             count = 0  # 秒计数清零
-            # print('count=', count)
-            # print('num', num)
-            # print('cut_time', cut_time)
-            # print('times', times)
-            # print('numbers', numbers)
+            print('count=', count)
+            print('num', num)
+            print('cut_time', cut_time)
+            print('times', times)
+            print('numbers', numbers)
             for i in range(int(json_data['times']) * 60):
                 # time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
@@ -473,12 +473,12 @@ def main():
                 if count % 60 == 0:  # 每分钟执行一次
                     if numbers >= num:
                         # 执行num个并发，并把地址传进去
-                        thread_start(r,num, numbers, rtmp_list, cut_time)
+                        thread_start(r,num, numbers, rtsp_list, cut_time)
                         numbers = numbers - num
                     else:
                         if numbers > 0:
                             # 执行numbers个程序
-                            thread_start(r, numbers, numbers, rtmp_list, cut_time)
+                            thread_start(r, numbers, numbers, rtsp_list, cut_time)
                             numbers = 0
 
                 count = count + 1

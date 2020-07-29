@@ -7,15 +7,8 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>后台管理系统</title>
 
+    <!-- axios -->
     <script type="text/javascript" src="/static/axios.min.js"></script>
-    <script type="text/javascript" src="/static/vue.min.js"></script>
-    <link rel="stylesheet" href="/static/bootstrap-3.3.7/css/bootstrap.min.css">
-    <script type="text/javascript" src="/static/jquery-3.3.1.min.js"></script>
-    <script type="text/javascript" src="/static/bootstrap-3.3.7/js/bootstrap.min.js"></script>
-    <!-- 引入样式 -->
-    <!-- <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css"> -->
-    <!-- 引入组件库 -->
-    <!-- <script src="https://unpkg.com/element-ui/lib/index.js"></script> -->
     <!-- element-ui + vue -->
     <link rel="stylesheet" href="/static/element-ui.css">
     <script src="/static/vue.js"></script>
@@ -25,126 +18,130 @@
 {% raw %}
 
 
-<div class="contaier">
+<!-- <div class="contaier"> -->
 
 
     <div id="app">
+
         <!-- Single button -->
+        <el-row type="flex" class="row-bg" justify="center">
+
+            <el-col :span="20">
+                <div class="grid-content">
         <div>
-            <div class="btn-group ">
-                <button type="button" class="btn btn-primary dropdown-toggle " data-toggle="dropdown"
-                        aria-haspopup="true"
-                        aria-expanded="false">
-                    队列状态 <span class="caret"></span>
-                </button>
-                <ul class="dropdown-menu">
-                    <li><a href="#" @click="finish_list">完成列表</a></li>
-                    <li><a href="#" @click="wait_list">等待列表</a></li>
-                    <li><a href="#" @click="fail_list">失败列表</a></li>
-                </ul>
-            </div>
-            <button class="btn btn-primary" @click="show_status" type="button">显示状态</button>
-            <button class="btn btn-primary" @click="config_file" type="button">设置配置文件</button>
+            <el-dropdown>
+                <el-button type="primary">
+                    队列状态<i class="el-icon-arrow-down el-icon--right"></i>
+                </el-button>
+                <el-dropdown-menu slot="dropdown">
+                  <el-dropdown-item ><el-link :underline="false" @click="finish_list" type="primary">完成列表</el-link></el-dropdown-item>
+                  <el-dropdown-item ><el-link :underline="false" @click="wait_list" type="primary">等待列表</el-link></el-dropdown-item>
+                  <el-dropdown-item ><el-link :underline="false" @click="fail_list" type="primary">失败列表</el-link></el-dropdown-item>
+                </el-dropdown-menu>
+            </el-dropdown>
+            <el-button style="margin-left: 10px;" @click="show_status" type="success">显示状态</el-button>
+            <el-button @click="config_file" type="warning">设置配置文件</el-button>  
         </div>
+        
 
         <br>
-        <!-- <div style="height: 150px">{{ todos }}</div> -->
         <div>
-            <span class="badge">完成数量：{{queue_num.finish_queue}}</span>
-            <span class="badge text-muted">等待数量：{{queue_num.wait_queue}}</span>
-            <span class="badge text-danger">失败数量：{{queue_num.fail_queue}}</span>
-
+            <el-tag type="success" style="margin-right: 10px;">完成数量：{{queue_num.finish_queue}}</el-tag>
+            <el-tag type="warning" style="margin-right: 10px;">等待数量：{{queue_num.wait_queue}}</el-tag>
+            <el-tag type="danger" style="margin-right: 10px;">失败数量：{{queue_num.fail_queue}}</el-tag>
+            <el-button @click="get_queue_num" size="small" type="primary" class="el-icon-refresh-left" circle></el-button>  
         </div>
         <br>
+        
         <div v-if="todos">
-            <div class="row">
-                <div class="col-sm-6 col-sm-offset-3 col-xs-8 col-xs-offset-2 col-lg-10 col-lg-offset-1">
+            <template v-if="seen_finish">
+                <h3 style="text-align: center">{{ title }}</h3>                
+                <el-table
+                    ref="multipleTable"
+                    :data="todos"
+                    tooltip-effect="dark"
+                    style="width: 100%"
+                    border
+                    @selection-change="handleSelectionChange">
+                    <el-table-column type="index" label="序号" width="55"></el-table-column>
+                    <el-table-column prop="time_start" label="开始时间"></el-table-column>
+                    <el-table-column prop="filename" label="完整路径"></el-table-column>
+                    <el-table-column prop="url" label="上传地址"></el-table-column>
+                    <el-table-column prop="data_id" label="文件名"></el-table-column>
+                    <el-table-column prop="cameracode" label="网点ID"></el-table-column>
+                    <el-table-column prop="resultAddress" label="回调地址"></el-table-column>
+                    <el-table-column prop="fail_num" label="失败次数" width="110"></el-table-column>
+                    
+                    <el-table-column v-if="title==='失败列表'" prop="error_code" label="错误码"></el-table-column>
+                    
+                    <el-table-column v-if="title==='失败列表'" label="上传" >
+                        <template slot-scope="scope">
+                            <el-button
+                                size="medium"
+                                class="el-icon-upload" circle
+                                @click="upload(scope.row['data_id'])">
+                            </el-button>
+                                                   
+                        </template>
+                    </el-table-column>
+                    
+                    <el-table-column type="selection" label="全选" width="55"></el-table-column>
 
-                    <table v-if="seen_finish" class="table table-bordered table-hover">
-                        <caption> <h3 v-if="seen_finish" style="text-align: center">{{ title }}</h3></caption>
 
-                        <tr>
-                            <th>序号</th>
-                            <th>开始时间</th>
-                            <th>完整路径</th>
-                            <th>上传地址</th>
-                            <th>文件名</th>
-                            <th>摄像头ID</th>
-                            <th>回调地址</th>
-                            <th>失败次数</th>
-                            <th v-if="title==='失败列表'">错误码</th>
-                            <th v-if="title==='失败列表'">上传</th>
-                            <th v-if="title==='失败列表'">
-                                <div style="display: inline-block;width: 50px;">
-                                    <div >
-                                        <label>
-                                            <input @click="check_all_func" type="checkbox" v-model="check_all"> 全选
-                                        </label>
-                                    </div>
-                                </div>
-                            </th>
-
-                        </tr>
-                        <tr v-for="(todo,index) in todos">
-                            <td>{{ index +1 }}</td>
-                            <td>{{ todo.time_start }}</td>
-                            <td>{{ todo.filename }}</td>
-                            <td>{{ todo.url }}</td>
-                            <td>{{ todo.data_id }}</td>
-                            <td>{{ todo.cameracode }}</td>
-                            <td>{{ todo.resultAddress }}</td>
-                            <td>{{ todo.fail_num }}</td>
-                            <td v-if="title==='失败列表'">{{ todo.error_code }}</td>
-
-                            <td v-if="title==='失败列表'">
-                                <div style="display: inline-block;width: 50px;">
-                                    <a @click="upload(todo.data_id)" class="btn btn-success" href="#">
-                                        上传
-                                    </a>
-                                </div>
-                            </td>
-                            <td v-if="title==='失败列表'">
-                                <label style="margin-left: 10px;">
-                                    <input :value="todo.data_id" v-model="check_list" type="checkbox">
-                                </label>
-                            </td>
-
-                        </tr>
-                    </table>
-                    <div v-if="title==='失败列表'">
-                        <button class="btn btn-success pull-right" @click="upload_all" >一键上传</button>
-                    </div>
-
-                </div>
+                </el-table>
+            </template>
+            <div v-if="title==='失败列表'">
+                <el-button type="primary" class="el-icon-upload" @click="upload_all" style="float: right; margin-top: 1em;" >一键上传</el-button>
             </div>
         </div>
         <div v-else>
             <p v-if="seen_finish">暂无数据</p>
         </div>
 
+        <!-- 状态表 -->
         <div v-if="todos_status">
             <div v-if="seen_status">
-                <div class="row">
-                    <div class="col-sm-6 col-sm-offset-3 col-xs-8 col-xs-offset-2 col-lg-10 col-lg-offset-1">
-                        <h3 v-if="seen_status" style="text-align: center">{{ title }}</h3>
+                <template>
+                    <h3 style="text-align: center">视频源状态</h3>
+                    <el-table
+                        :data="todos_status"
+                        style="width: 100%"
+                        border>
+                        <el-table-column
+                        prop="num"
+                        label="视频序号"
+                        width=180
+                        >
+                        </el-table-column>
+                        <el-table-column
+                        prop="rtsp_url"
+                        label="视频源地址"
+                        >
+                        </el-table-column>
+                        <el-table-column
+                        prop="status"
+                        label="状态"
+                        >
+                        <template slot-scope="scope">
+                            
+                            <div v-if="scope.row.status === 'fail'">
+                                <el-tag type="danger">失败</el-tag>
+                            </div>
+                            <div v-if="scope.row.status === 'normal'">
+                                <el-tag type="success">正常</el-tag>
+                            </div>                        
+                        </template>
+                        
 
-                            <caption><table class="table table-bordered table-hover "></caption>
-                            <tr>
-                                <th>序号</th>
-                                <th>视频地址</th>
-                                <th>状态</th>
-                                <th>失败次数</th>
-
-                            </tr>
-                            <tr v-for="todo in todos_status">
-                                <td>{{ todo.num }}</td>
-                                <td>{{ todo.rtmp_url }}</td>
-                                <td>{{ todo.status }}</td>
-                                <td>{{ todo.fail_num }}</td>
-                            </tr>
-                        </table>
-                    </div>
-                </div>
+                        </el-table-column>
+                        <el-table-column
+                        prop="fail_num"
+                        label="失败次数"
+                        >
+                        </el-table-column>
+                    </el-table>
+                </template>
+               
             </div>
         </div>
         <div v-else>
@@ -152,53 +149,30 @@
         </div>
 
                 <div id="app_form" v-if="seen_form">
-                    <div class="row">
-                        <div class="col-sm-6 col-sm-offset-3 col-xs-8 col-xs-offset-2 col-lg-10 col-lg-offset-1">
-                            <form>
-                                <!-- <template v-for="(rtmp,index) in RTMP_list"> -->
+                    <!-- <div class="row"> -->
+                        <!-- <div class="col-sm-6 col-sm-offset-3 col-xs-8 col-xs-offset-2 col-lg-10 col-lg-offset-1"> -->
+                            <el-form ref="form" :model="form">
+
                                     <template>
                                         <h3 style="text-align: center">视频源地址</h3>
                                         <el-table
-                                            :data="RTMP_list"
+                                            :data="RTSP_list"
                                             style="width: 100%"
                                             border>
-                                            <el-table-column
-                                            type="index"
-                                            label="序号"
-                                            width=180
-                                            >
-                                            </el-table-column>
-                                            <el-table-column
-                                            prop="rtmp_url"
-                                            label="视频地址"
-                                            >
-                                            </el-table-column>
-                                            <el-table-column
-                                            prop="cameracode"
-                                            label="网点ID"
-                                            >
-                                            </el-table-column>
-                                            <el-table-column
-                                            prop="url"
-                                            label="上传地址"
-                                            >
-                                            </el-table-column>
-                                            <el-table-column
-                                            prop="resultAddress"
-                                            label="回调地址"
-                                            >
-                                            </el-table-column>
-                                            <el-table-column
-                                            label="操作"
-                                            >
+                                            <el-table-column type="index" label="序号" width=180></el-table-column>
+                                            <el-table-column prop="rtsp_url" label="视频地址"></el-table-column>
+                                            <el-table-column prop="cameracode" label="网点ID"></el-table-column>
+                                            <el-table-column prop="url" label="上传地址"></el-table-column>
+                                            <el-table-column prop="resultAddress" label="回调地址"></el-table-column>
+                                            <el-table-column label="操作">
                                             <template slot-scope="scope">
                                                 <el-button
-                                                size="small "
-                                                @click="handleEdit(scope.$index, scope.row),  dialogFormVisible = true">编辑</el-button>
+                                                size="medium"
+                                                @click="handleEdit(scope.$index, scope.row),  dialogFormVisible = true" class="el-icon-edit" circle></el-button>
                                                 <el-button
-                                                  size="small "
+                                                  size="medium"
                                                   type="danger"
-                                                  @click="handleDelete(scope.$index, scope.row)">删除</el-button>
+                                                  @click="handleDelete(scope.$index, scope.row)" class="el-icon-delete" circle></el-button>
                                             </template>
                                             </el-table-column>
                                         </el-table>
@@ -206,77 +180,83 @@
                                         <el-button size="small" type="primary" @click="createRTML" style="float:right">新增</el-button>
 
                                     </template>
-                                           
-                                    <!-- Form -->
-                                    <!-- <el-button type="text" @click="dialogFormVisible = true">打开嵌套表单的 Dialog</el-button> -->
 
                                     <el-dialog title="修改视频源地址" :visible.sync="dialogFormVisible" :before-close="handleClose">
-                                    <el-form :model="form">
-                                        <el-form-item label="视频源地址" :label-width="formLabelWidth">
-                                        <el-input v-model="form.form_RTMP_url" autocomplete="off"></el-input>
-                                        </el-form-item>
+                                        <el-form :model="form">
+                                            <el-form-item label="视频源地址" :label-width="formLabelWidth">
+                                            <el-input v-model="form.form_RTSP_url" autocomplete="off"></el-input>
+                                            </el-form-item>
 
-                                        <el-form-item label="网点ID" :label-width="formLabelWidth">
-                                        <el-input v-model="form.form_cameracode" autocomplete="off"></el-input>
-                                        </el-form-item>
-                                        <el-form-item label="上传地址" :label-width="formLabelWidth">
-                                            <el-input v-model="form.form_url" autocomplete="off"></el-input>
-                                        </el-form-item>
-                                        <el-form-item label="回调地址" :label-width="formLabelWidth">
-                                            <el-input v-model="form.form_resultAddress" autocomplete="off"></el-input>
-                                        </el-form-item>
+                                            <el-form-item label="网点ID" :label-width="formLabelWidth">
+                                            <el-input v-model="form.form_cameracode" autocomplete="off"></el-input>
+                                            </el-form-item>
+                                            <el-form-item label="上传地址" :label-width="formLabelWidth">
+                                                <el-input v-model="form.form_url" autocomplete="off"></el-input>
+                                            </el-form-item>
+                                            <el-form-item label="回调地址" :label-width="formLabelWidth">
+                                                <el-input v-model="form.form_resultAddress" autocomplete="off"></el-input>
+                                            </el-form-item>
 
-                                    </el-form>
-                                    <div slot="footer" class="dialog-footer">
-                                        <el-button @click="dialogFormVisible = false">取 消</el-button>
-                                        <el-button type="primary" @click="formSubmit ">保 存</el-button>
-                                    </div>
+                                        </el-form>
+                                        <div slot="footer" class="dialog-footer">
+                                            <el-button @click="dialogFormVisible = false">取 消</el-button>
+                                            <el-button type="primary" @click="formSubmit ">保 存</el-button>
+                                        </div>
                                     </el-dialog>
                                 <br>
-                                
-                                <div class="form-group">
-                                    <label for="cut_time">切片时间(s)</label>
-                                    <input v-model="cut_time" type="text" class="form-control" id="cut_time"
-                                           placeholder="每个视频的切片时间">
-                                    <!-- <label for="numbers">总路数</label>
-                                    <input v-model="numbers" type="text" class="form-control" id="numbers"
-                                           placeholder="总路数"> -->
-                                    <label for="times">切片总时间(min)</label>
-                                    <input v-model="times" type="text" class="form-control" id="times"
-                                           placeholder="总路数切片需要的时间">
-
-                                    
-                                </div>
-                                <br>
-
-                                <div class="form-group">
-                                    <label for="expire">过期时间(天)</label>
-                                    <input v-model="expire" type="text" class="form-control" id="expire"
-                                           placeholder="过期时间">
-                                    <label for="timing">清理间隔时间(天)</label>
-                                    <input v-model="timing" type="text" class="form-control" id="timing"
-                                           placeholder="每隔多长时间清理文件">
-
-                                </div>
-                                <br>
-
-                               
-
-                                <div class="checkbox">
-                                    <label>
-                                        <input v-model="flag" type="checkbox"> 启动程序
-                                    </label>
+                                <div>
+                                    <el-row :gutter="50">
+                                        <el-col :span="6"><div class="grid-content bg-purple">
+                                            <el-form-item label="切片时间(s)">
+                                                <el-input v-model="cut_time" type="text" placeholder="每个视频的切片时间"></el-input>
+                                                </el-form-item>
+                                        </div></el-col>
+                                        <el-col :span="6"><div class="grid-content bg-purple">
+                                            <el-form-item label="切片总时间(min)">
+                                                <el-input v-model="times" type="text" placeholder="总路数切片需要的时间"></el-input>
+                                            </el-form-item>
+                                        </div></el-col>
+                                    </el-row>
                                 </div>
 
-                                <button @click="submit_config" class="btn btn-primary pull-right">修改配置</button>
-                            </form>
-                        </div>
-                    </div>
+                                <div>
+                                    <el-row :gutter="50">
+                                        <el-col :span="6"><div class="grid-content bg-purple">
+                                            <el-form-item label="过期时间(天)">
+                                                <el-input v-model="expire" type="text" placeholder="过期时间"></el-input>
+                                                </el-form-item>
+                                        </div></el-col>
+                                        <el-col :span="6"><div class="grid-content bg-purple">
+                                            <el-form-item label="清理间隔时间(天)">
+                                                <el-input v-model="timing" type="text" placeholder="每隔多长时间清理文件"></el-input>
+                                            </el-form-item>
+                                        </div></el-col>
+                                    </el-row>
+                                </div>
+
+
+                                <el-switch
+                                    v-model="flag"
+                                    active-color="#13ce66"
+                                    inactive-color="#ff4949"
+                                    active-text="启动程序"
+                                    >
+                                </el-switch>
+                                <el-button  @click="submit_config" type="primary right" style="float: right;">修改配置</el-button>
+                            </el-form>
+
+                        <!-- </div> -->
+                    <!-- </div> -->
                 </div>
+
+
+            </div>
+        </el-col> 
+    </el-row>    
             </div>
         </div>
     </div>
-</div>
+<!-- </div> -->
 {% endraw %}
     
 <script>
@@ -286,14 +266,13 @@
             return {
                 //visible: false,
                 title: '完成列表',
-                RTMP_list: [{
-                    "rtmp_url":"",
+                RTSP_list: [{
+                    "rtsp_url":"",
                     "cameracode":"",
                     "url":"",
                     "resultAddress":""
                 }],
                 cut_time: '',
-                numbers: '',
                 times: '',
                 flag: true,
                 expire: '',
@@ -320,8 +299,8 @@
                     {
                         "fail_num": "",
                         "num": 0,
-                        "rtmp_url": "",
-                        "status": []
+                        "rtsp_url": "",
+                        "status": ""
                     }
                 ],
                 queue_num: [
@@ -334,7 +313,7 @@
                 dialogFormVisible: false,
                 form: {
                     form_index:0,
-                    form_RTMP_url: '',
+                    form_RTSP_url: '',
                     form_cameracode: '',
                     form_url:'',
                     form_resultAddress:''
@@ -369,13 +348,24 @@
 
         },
         methods: {
+            get_queue_num:function(){
+                const self = this
+
+                axios.post("/queue_num").then((data) => {
+                console.log("queue_num: ", data)
+                self.queue_num = data.data
+                })
+                .catch((err) => {
+                    console.log("err: ", err)
+                })
+            },
             show_status: function () {
                 const self = this
                 axios.post("/status").then((data) => {
                     console.log("status: ", data)
                     if(data){
                         self.todos_status = data.data
-                        console.log(self.todos_status)
+                        
                     }else {
                         self.todos_status = ''
 
@@ -403,8 +393,7 @@
                         self.timing = data.data['timing'],
 
 
-                        self.RTMP_list = data.data['RTMP_list'],
-                        self.numbers = self.RTMP_list.length
+                        self.RTSP_list = data.data['RTSP_list']
 
                     }
                     self.seen_finish = false
@@ -420,10 +409,9 @@
             submit_config: function () {
                 const self = this
                 axios.post("/config_file", {
-                    "numbers": self.RTMP_list.length,
                     "cut_time": self.cut_time,
                     "times": self.times,
-                    "RTMP_list": self.RTMP_list,
+                    "RTSP_list": self.RTSP_list,
                     "expire": self.expire,
                     "timing": self.timing,
 
@@ -432,8 +420,7 @@
                     console.log("submit_config: ", data)
                     self.cut_time = data.data['cut_time']
                     self.times = data.data['times']
-                    self.RTMP_list = data.data['RTMP_list']
-                    self.numbers = self.RTMP_list.length
+                    self.RTSP_list = data.data['RTSP_list']
 
                     self.title = ''
                     self.expire = data.data['expire']
@@ -442,6 +429,12 @@
                     self.seen_finish = false
                     self.seen_status = false
                     self.seen_form = true
+
+                    self.$message({
+                        showClose: true,
+                        message: '保存成功',
+                        type: 'success'
+                    });
                   
 
                 })
@@ -527,6 +520,15 @@
                 })
 
             },
+            handleSelectionChange:function (val) {
+                const self = this
+                self.check_list = []
+                for (var i=0;i<val.length;i++)
+                { 
+                    self.check_list[i] = val[i]['data_id']
+                }
+                
+            },
             check_all_func:function () {
                 const self = this
                 console.log(self.check_all)
@@ -543,7 +545,7 @@
                 console.log(index, row);
                 const self = this
                 self.form.form_index = index
-                self.form.form_RTMP_url = row['rtmp_url']
+                self.form.form_RTSP_url = row['rtsp_url']
                 self.form.form_cameracode = row['cameracode']
                 self.form.form_url = row['url']
                 self.form.form_resultAddress = row['resultAddress']
@@ -551,7 +553,7 @@
             handleDelete(index, row) {
                 const self = this
                 console.log(index, row);
-                self.RTMP_list.splice(index,1)
+                self.RTSP_list.splice(index,1)
             },
             handleClose(done) {
                 this.$confirm('确认关闭？')
@@ -561,24 +563,24 @@
                 .catch(_ => {});
             },
             formSubmit:function (){
-                //表单提交，修改RTMP列表里面的数组，然后上传
+                //表单提交，修改RTSP列表里面的数组，然后上传
                 const self = this
                 // 修改参数
-                if(self.form.form_index<self.RTMP_list.length){
-                    self.RTMP_list[self.form.form_index]["cameracode"] = self.form.form_cameracode
-                    self.RTMP_list[self.form.form_index]["rtmp_url"] = self.form.form_RTMP_url
-                    self.RTMP_list[self.form.form_index]["url"] = self.form.form_url
-                    self.RTMP_list[self.form.form_index]["resultAddress"] = self.form.form_resultAddress
+                if(self.form.form_index<self.RTSP_list.length){
+                    self.RTSP_list[self.form.form_index]["cameracode"] = self.form.form_cameracode
+                    self.RTSP_list[self.form.form_index]["rtsp_url"] = self.form.form_RTSP_url
+                    self.RTSP_list[self.form.form_index]["url"] = self.form.form_url
+                    self.RTSP_list[self.form.form_index]["resultAddress"] = self.form.form_resultAddress
 
                 }else{
                 // 新增参数
                     dic = {
                         "cameracode":self.form.form_cameracode,
-                        "rtmp_url":self.form.form_RTMP_url,
+                        "rtsp_url":self.form.form_RTSP_url,
                         "url":self.form.form_url,
                         "resultAddress":self.form.form_resultAddress,
                     }
-                    self.RTMP_list.push(dic)
+                    self.RTSP_list.push(dic)
                 }
 
 
@@ -588,8 +590,8 @@
                 // 新增一行
                 const self = this
                 self.dialogFormVisible = true
-                self.form.form_index = self.RTMP_list.length + 1
-                self.form.form_RTMP_url = ""
+                self.form.form_index = self.RTSP_list.length + 1
+                self.form.form_RTSP_url = ""
                 self.form.form_cameracode = ""
                 self.form.form_url = ""
                 self.form.form_resultAddress = ""

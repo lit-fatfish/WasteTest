@@ -13,6 +13,14 @@ import redis
 from redis import Redis
 from threading import Timer
 
+
+
+
+if platform.system() == 'Windows':
+    config_name = os.path.join('config.json')
+elif platform.system() == 'Linux':
+    config_name = os.path.join('/opt','config.json')
+
 # 根据键值读字符串
 def get_values(r, key):
     dic = r.get(key)
@@ -23,7 +31,7 @@ def get_values(r, key):
 
 # dic 字典
 def set_values(r, key, dic):
-    json_data = read_jsonfile('config.json')
+    json_data = read_jsonfile(config_name)
     r.set(key, str(dic),ex=int(json_data['expire'])*86400) # 获取到期天数，然后乘以86400s（一天）
 
 
@@ -73,7 +81,7 @@ def get_days_list(num):
 
 
 def clear_file(r, path):
-    json_data = read_jsonfile('config.json')
+    json_data = read_jsonfile(config_name)
     timing = int(json_data["timing"]) * 86400
     num = int(json_data['expire'])
 
@@ -162,9 +170,10 @@ def cut_video(r, list_num, rtsp_list, cut_time):
     if not os.path.exists(foldername):
         os.mkdir(foldername)
     filename = os.path.join(foldername, videoid + '.mp4')
-    rtsp_url = rtsp_list[list_num]["rtsp_url"]  # 视频源地址
+    rtsp_url = rtsp_list[list_num]["rtsp_url"].format(rtsp_list[list_num]["docker_ip"])  # 视频源地址
     print(rtsp_url)
     cmd = "ffmpeg -i " + rtsp_url + " -t " + interval + " -c copy -f mp4 -y " + filename
+    print(cmd)
     val = os.system(cmd)
     print(val)
 
@@ -195,7 +204,7 @@ def cut_video(r, list_num, rtsp_list, cut_time):
                     "status": "normal"
                 }
 
-            write_queue(r, "status_set", rtsp_url)  # 写入rtsp_url为集合的值
+            # write_queue(r, "status_set", rtsp_url)  # 写入rtsp_url为集合的值
             set_values(r,rtsp_url, dic_status)
             return
 
@@ -214,7 +223,7 @@ def cut_video(r, list_num, rtsp_list, cut_time):
             "fail_num": 0,
             "status": "normal"
         }
-        write_queue(r,"status_set",rtsp_url) # 写入rtsp_url为集合的值
+        # write_queue(r,"status_set",rtsp_url) # 写入rtsp_url为集合的值
         set_values(r,rtsp_url,dic_status)
 
         # 将数据写入等待队列
@@ -258,7 +267,7 @@ def cut_video(r, list_num, rtsp_list, cut_time):
                 "fail_num": 1,
                 "status": "normal"
             }
-        write_queue(r, "status_set", rtsp_url)  # 写入rtsp_url为集合的值
+        # write_queue(r, "status_set", rtsp_url)  # 写入rtsp_url为集合的值
         set_values(r, rtsp_url, dic_status)
 
 
@@ -270,12 +279,14 @@ def post_to_server(r,queue_name):
     time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     # 从Redis读取文件
     video_id = read_queue(r, queue_name)
+    print(video_id)
     # 假如获取到的是一个字典，那获取键值对的时候，会出错，应该直接删除该队列
     if type(video_id) == type({}):
         remove_queue(r, queue_name, video_id)
         return
     if video_id:
         dic = get_values(r,video_id)
+        print(dic)
         # 假如读取不到结果,删除该队列
         if not dic:
             remove_queue(r, queue_name, video_id)
@@ -284,6 +295,7 @@ def post_to_server(r,queue_name):
     else:
         # 读得到队列里面的内容，但是读取不到键值对，说明队列出现错误，应该删除当前的队列
         return
+    print("hello1")
     # 这里字典是必定存在的，不存在的字典已经返回了
     filename = dic["filename"]
     fail_num = dic["fail_num"]
@@ -297,67 +309,104 @@ def post_to_server(r,queue_name):
     if os.path.exists(filename):
         files = {'fileData': open(filename, 'rb')}
     else:
-        print("无法读取到文件")
+        print("file can not found")
         return False
+    print("hello2")
+    try:
+        response = requests.post(url, data=formdata, files=files)
+        
+        # exit(0)
+        
+        print(response)
+        # 获取视频名
+        # 移除当前等待队列
+        # 删除对应的键
+        print(response.status_code)
+        remove_queue(r,queue_name,video_id)
+        # remove_key(r,video_id) # 完成不用删除键值对的，重写会自动覆盖，只需要修改队列
 
-    response = requests.post(url, data=formdata, files=files)
-    # 获取视频名
-    # 移除当前等待队列
-    # 删除对应的键
-    remove_queue(r,queue_name,video_id)
-    # remove_key(r,video_id) # 完成不用删除键值对的，重写会自动覆盖，只需要修改队列
-
-    if response.status_code == 200:
-        json_result = response.json()
-        # 返回结果判断
-        # 这里的data_id 采用从redis中读取文件名，因为有可能返回的json文件无法获得文件名
-        post_result_str = str(time_now) + "\t\tdataid=" + dic["data_id"] + "\t\terror_code=" + str(
-            json_result['error_code'])
-        if json_result['error_code'] == 0:
-            post_result_str += "\tpost成功\n"
+        if response.status_code == 200:
+            print("world")
+            json_result = response.json()
+            # 返回结果判断
+            # 这里的data_id 采用从redis中读取文件名，因为有可能返回的json文件无法获得文件名
+            post_result_str = str(time_now) + "\t\tdataid=" + dic["data_id"] + "\t\terror_code=" + str(
+                json_result['error_code'])
+            if json_result['error_code'] == 0:
+                post_result_str += "\tpost成功\n"
+                record_message('post_result.log', post_result_str)
+                # 加入成功队列
+                write_queue(r,"finish_queue",video_id)
+                set_values(r,video_id,dic)
+                return True
+            # 错误码
+            elif json_result['error_code'] == 10001:
+                post_result_str += "\t非本机网点id" + "\tpost失败\n"
+                dic["fail_num"] += 5
+            elif json_result['error_code'] == 10002:
+                post_result_str += "\t视频文件太小" + "\tpost失败\n"
+                dic["fail_num"] += 5
+            elif json_result['error_code'] == 10003:
+                post_result_str += "\t视频文件太大" + "\tpost失败\n"
+                dic["fail_num"] += 5
+            elif json_result['error_code'] == 10009:
+                post_result_str += "\t未在服务时间段" + "\tpost失败\n"
+                dic["fail_num"] += 5
+            elif json_result['error_code'] == 10011:
+                post_result_str += "\t上传失败" + "\tpost失败\n"
+            elif json_result['error_code'] == 10012:
+                post_result_str += "\t重复上传" + "\tpost失败"
+                # 删除文件和队列
+                remove_queue(r,queue_name,dic["data_id"])  # 根据文件名删除队列
+                # 文件是否删除，
+                if os.path.exists(dic["filename"]):
+                    os.remove(filename)
+                return
+            elif json_result['error_code'] == 10013:
+                post_result_str += "\t缺少车道图	" + "\tpost失败"
+                dic["fail_num"] += 5
+            elif json_result['error_code'] == 10014:
+                post_result_str += "\t视频缺少帧数	" + "\tpost失败"
+                # 删除文件和队列
+                remove_queue(r,queue_name,dic["data_id"])  # 根据文件名删除队列
+                # 文件是否删除，
+                if os.path.exists(dic["filename"]):
+                    os.remove(filename)
+                return
             record_message('post_result.log', post_result_str)
-            # 加入成功队列
-            write_queue(r,"finish_queue",video_id)
-            set_values(r,video_id,dic)
-            return True
-        # 错误码
-        elif json_result['error_code'] == 10001:
-            post_result_str += "\t非本机网点id" + "\tpost失败\n"
-            dic["fail_num"] += 5
-        elif json_result['error_code'] == 10002:
-            post_result_str += "\t视频文件太小" + "\tpost失败\n"
-            dic["fail_num"] += 5
-        elif json_result['error_code'] == 10003:
-            post_result_str += "\t视频文件太大" + "\tpost失败\n"
-            dic["fail_num"] += 5
-        elif json_result['error_code'] == 10009:
-            post_result_str += "\t未在服务时间段" + "\tpost失败\n"
-            dic["fail_num"] += 5
-        elif json_result['error_code'] == 10011:
-            post_result_str += "\t上传失败" + "\tpost失败\n"
-        elif json_result['error_code'] == 10012:
-            post_result_str += "\t重复上传" + "\tpost失败"
-            # 删除文件和队列
-            remove_queue(r,queue_name,dic["data_id"])  # 根据文件名删除队列
-            # 文件是否删除，
-            if os.path.exists(dic["filename"]):
-                os.remove(filename)
-            return
-        elif json_result['error_code'] == 10013:
-            post_result_str += "\t缺少车道图	" + "\tpost失败"
-            dic["fail_num"] += 5
-        elif json_result['error_code'] == 10014:
-            post_result_str += "\t视频缺少帧数	" + "\tpost失败"
-            # 删除文件和队列
-            remove_queue(r,queue_name,dic["data_id"])  # 根据文件名删除队列
-            # 文件是否删除，
-            if os.path.exists(dic["filename"]):
-                os.remove(filename)
-            return
-        record_message('post_result.log', post_result_str)
-        # 这里肯定是失败的，次数+1
-        dic["fail_num"] += 1
+            # 这里肯定是失败的，次数+1
+            dic["fail_num"] += 1
 
+            # 上传错误代码到Redis
+            dic_post = {
+                "time": time_now,
+                "data_id":dic["data_id"],
+                "error_code":json_result['error_code']
+            }
+            key_post = 'fail' + dic["data_id"]
+            set_values(r, key_post, dic_post)
+            fail_num = dic["fail_num"]
+            if fail_num >= 5:
+                # 加入失败队列
+                write_queue(r,"fail_queue",dic["data_id"])
+            else:
+                # 重新写到等待队列
+                write_queue(r,"wait_queue",dic["data_id"])
+            set_values(r, video_id, dic)
+            return False
+    # else:
+    #     # 服务器返回的状态码不对，比如404之类的
+    #     print("error")
+    #     write_queue(r,"fail_queue",video_id)
+    #     post_result_str = "服务器返回状态码：" + str(response.status_code) + "\n"
+    #     record_message('post_result.log', post_result_str)
+    #     return False
+    # 没有成功执行默认判断为错误
+    # 一般为服务器状态无响应，需要修改为失败队列，在后台等待上传，或者等待自动上传
+    # 修改参数需要吗？还是直接加入失败队列。直接设置为失败队列就可以了
+    # 加入失败队列
+    except:
+        write_queue(r,"fail_queue",video_id)
         # 上传错误代码到Redis
         dic_post = {
             "time": time_now,
@@ -366,19 +415,8 @@ def post_to_server(r,queue_name):
         }
         key_post = 'fail' + dic["data_id"]
         set_values(r, key_post, dic_post)
-        fail_num = dic["fail_num"]
-        if fail_num >= 5:
-            # 加入失败队列
-            write_queue(r,"fail_queue",dic["data_id"])
-        else:
-            # 重新写到等待队列
-            write_queue(r,"wait_queue",dic["data_id"])
-        set_values(r, video_id, dic)
-    else:
-        # 服务器返回的状态码不对，比如404之类的
-        post_result_str = "服务器返回状态码：" + str(response.status_code) + "\n"
+        post_result_str = str(time_now) + "\t上传地址无响应\n"
         record_message('post_result.log', post_result_str)
-
 
 # 上传到服务器线程
 
@@ -434,15 +472,20 @@ def init_redis():
     pwd = "anlly12345"
     # docker不能存在主机名，因为需要部署到好多服务器
     if platform.system() == 'Windows':
-        host = '192.168.31.249'
-        db = 8
+        # host = '192.168.31.249'
+        host = '127.0.0.1'
+        pwd = ''
+        db = 0
     elif platform.system() == 'Linux':
         host = 'redis'
         db = 0
+    print(host)
     # host= 'localhost'
     # pwd=''
     redis_obj = Redis(host=host, port=6379, password=pwd, db=db,decode_responses=True)
     return redis_obj
+
+
 
 
 def main():
@@ -451,21 +494,29 @@ def main():
     clear_file(r,'video')
     post_fail_file(7200, r) # 每两小时运行一次
     while True:
-        json_data = read_jsonfile('config.json')
+        json_data = read_jsonfile(config_name)
         # print(json_data)
         if json_data['flag']:
 
-            times = json_data['times']
-            numbers = len(json_data['RTSP_list'])
-            cut_time = json_data['cut_time']
-            rtsp_list = json_data['RTSP_list']
-            num = int( numbers + 1/ times)  # 每分钟执行的个数
+            times = int(json_data['times'])
+            numbers = len(json_data['rtsp_list'])
+            cut_time = int(json_data['cut_time'])
+            rtsp_list = json_data['rtsp_list']
+            num = int( numbers/ times)  # 每分钟执行的个数
+            if num >0:
+                while((num * times) < numbers):
+                    num += 1
+            else:
+                num = 1
+
             count = 0  # 秒计数清零
-            print('count=', count)
-            print('num', num)
-            print('cut_time', cut_time)
-            print('times', times)
-            print('numbers', numbers)
+            # print('count=', count)
+            # print('num', num)
+            # print('cut_time', cut_time)
+            # print('times', times)
+            # print('numbers', numbers)
+            # post_to_server(r, "wait_queue")
+
             for i in range(int(json_data['times']) * 60):
                 # time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
@@ -483,7 +534,11 @@ def main():
 
                 count = count + 1
                 # post到服务器
-                post_thered(r, "wait_queue")
+                # post_thered(r, "wait_queue")
+                # if (i%10 ==0):
+                    # post_thered(r, "wait_queue")
+                post_to_server(r, "wait_queue")
+
                 time.sleep(1)
         else:
             time.sleep(1)

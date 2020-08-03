@@ -485,14 +485,32 @@ def init_redis():
     redis_obj = Redis(host=host, port=6379, password=pwd, db=db,decode_responses=True)
     return redis_obj
 
+# 测试上传
 
+def timing_post(timing, r, queue_name):
+    json_data = read_jsonfile(config_name)
+    if json_data['flag']:
+        post_to_server(r, queue_name)
+        # time.sleep(30)
+        # print("running")
+        # print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    t = Timer(timing, timing_post, (timing,r, queue_name,))
+    t.start()
 
+# def main1():
+#     # r = init_redis()
+#     r = "redis"
+#     timing_post(5,r,"wait_post")
+#     while True:
+#         print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+#         time.sleep(1)
 
 def main():
     r = init_redis()
     clear_file(r,'log')
     clear_file(r,'video')
     post_fail_file(7200, r) # 每两小时运行一次
+    timing_post(5,r,"wait_queue") # 定时5秒运行一次，假如存在阻塞时，会自动阻塞并延长时间
     while True:
         json_data = read_jsonfile(config_name)
         # print(json_data)
@@ -537,9 +555,10 @@ def main():
                 # post_thered(r, "wait_queue")
                 # if (i%10 ==0):
                     # post_thered(r, "wait_queue")
-                post_to_server(r, "wait_queue")
+                # post_to_server(r, "wait_queue")
 
                 time.sleep(1)
+                print(count)
         else:
             time.sleep(1)
             print('cut video program is not running')
